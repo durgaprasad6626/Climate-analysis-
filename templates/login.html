@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HeatwaveGuard | Authentication</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter','sans-serif'], serif: ['Cinzel','serif'] },
+                    colors: {
+                        emerald: { 900: '#064e3b', 800: '#065f46', 500: '#10b981', 400: '#34d399' },
+                        luxury: { gold: '#d4af37', goldlight: '#fde047' }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* ── Auth-specific styles ── */
+        .auth-card {
+            background: rgba(6, 78, 59, 0.45);
+            backdrop-filter: blur(28px);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 40px rgba(16, 185, 129, 0.08);
+            border-radius: 12px;
+        }
+
+        .bg-overlay {
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle at center, transparent 0%, rgba(6, 78, 59, 0.8) 100%);
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Tab underline */
+        .auth-tab { transition: all 0.3s; }
+        .auth-tab.active {
+            color: #d4af37;
+            border-bottom: 2px solid #d4af37;
+        }
+
+        /* Method pill toggle */
+        .method-pill {
+            flex: 1;
+            padding: 10px 0;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6b7280;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .method-pill.active {
+            background: linear-gradient(135deg, #d4af37, #f59e0b);
+            color: #000;
+            box-shadow: 0 0 16px rgba(212,175,55,0.4);
+        }
+
+        /* Input field */
+        .auth-input {
+            width: 100%;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid rgba(30,41,59,0.8);
+            border-radius: 6px;
+            padding: 14px 16px 14px 44px;
+            color: #fff;
+            font-size: 0.95rem;
+            transition: border-color 0.3s, box-shadow 0.3s;
+            outline: none;
+        }
+        .auth-input:focus {
+            border-color: #d4af37;
+            box-shadow: 0 0 0 2px rgba(212,175,55,0.15), 0 0 20px rgba(212,175,55,0.1);
+        }
+        .auth-input::placeholder { color: #374151; }
+
+        /* Primary button */
+        .auth-btn-primary {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #d4af37, #f59e0b);
+            color: #000;
+            font-weight: 700;
+            font-size: 0.8rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: none;
+        }
+        .auth-btn-primary:hover {
+            background: linear-gradient(135deg, #f59e0b, #fde047);
+            box-shadow: 0 0 24px rgba(212,175,55,0.5);
+            transform: translateY(-1px);
+        }
+        .auth-btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* OTP digit boxes */
+        .otp-box {
+            width: 52px;
+            height: 64px;
+            background: rgba(0,0,0,0.6);
+            border: 1px solid rgba(30,41,59,0.9);
+            border-radius: 8px;
+            text-align: center;
+            font-size: 1.8rem;
+            font-weight: 700;
+            font-family: 'Cinzel', serif;
+            color: #d4af37;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+            outline: none;
+            caret-color: #d4af37;
+        }
+        .otp-box:focus {
+            border-color: #d4af37;
+            box-shadow: 0 0 0 2px rgba(212,175,55,0.2), 0 0 16px rgba(212,175,55,0.3);
+            background: rgba(212,175,55,0.04);
+        }
+        .otp-box.filled {
+            border-color: rgba(212,175,55,0.6);
+        }
+
+        /* OTP demo card */
+        .otp-demo-card {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 8px;
+            padding: 16px 20px;
+        }
+
+        /* Step slides */
+        .auth-step { display: none; animation: stepIn 0.4s cubic-bezier(0.16,1,0.3,1) forwards; }
+        .auth-step.active { display: block; }
+        @keyframes stepIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        /* Error alert */
+        .auth-error {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.4);
+            border-radius: 6px;
+            padding: 12px 16px;
+            color: #fca5a5;
+            font-size: 0.85rem;
+        }
+
+        /* Step indicator */
+        .step-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: rgba(30,41,59,0.8);
+            transition: all 0.3s;
+        }
+        .step-dot.active {
+            background: #d4af37;
+            box-shadow: 0 0 8px rgba(212,175,55,0.5);
+            width: 24px;
+            border-radius: 4px;
+        }
+
+        /* Spinner */
+        .btn-spinner {
+            display: inline-block;
+            width: 16px; height: 16px;
+            border: 2px solid rgba(0,0,0,0.3);
+            border-top-color: #000;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Countdown timer */
+        .countdown { font-variant-numeric: tabular-nums; }
+    </style>
+</head>
+<body class="bg-luxury-black text-luxury-silver font-sans min-h-screen relative overflow-hidden antialiased flex flex-col items-center justify-center">
+    <!-- Main Background -->
+    <div class="fixed inset-0 z-0">
+        <img src="{{ url_for('static', filename='emerald_depth_login_bg_png_1774544899186.png') }}" class="w-full h-full object-cover" alt="Atmospheric weather background">
+    </div>
+    <div class="bg-overlay"></div>
+    <div class="mist-overlay"></div>
+
+    <!-- Background orbs -->
+    <div class="bg-orb bg-orb-1"></div>
+    <div class="bg-orb bg-orb-2"></div>
+    <div class="bg-orb bg-orb-3"></div>
+
+    <div class="relative z-10 w-full max-w-md px-4 py-10">
+
+        <!-- Logo -->
+        <div class="flex flex-col items-center mb-8 relative">
+            <div class="glow-shimmer absolute inset-0 -z-10 opacity-30"></div>
+            <i class="fa-solid fa-gem text-emerald-400 text-3xl mb-3 drop-shadow-[0_0_15px_rgba(52,211,153,0.8)]"></i>
+            <h1 class="font-serif text-3xl font-semibold tracking-wide text-white">
+                Heatwave<span class="text-emerald-400 font-light">Guard</span>
+            </h1>
+            <p class="text-emerald-500/60 text-xs uppercase tracking-widest mt-2 font-medium">Environmental Intelligence Luxe</p>
+        </div>
+
+        <!-- Auth Card -->
+        <div class="auth-card rounded-lg p-8">
+
+            <!-- Tabs: Login / Register -->
+            <div class="flex border-b border-luxury-slate/40 mb-7">
+                <button id="tabLogin" class="auth-tab active pb-3 mr-6 text-sm uppercase tracking-widest font-semibold" onclick="switchTab('login')">
+                    Authorize
+                </button>
+                <button id="tabRegister" class="auth-tab pb-3 text-sm uppercase tracking-widest font-semibold text-gray-500" onclick="switchTab('register')">
+                    Enroll
+                </button>
+            </div>
+
+            <!-- Error Banner -->
+            <div id="errorBanner" class="auth-error hidden mb-5">
+                <i class="fa-solid fa-circle-exclamation mr-2"></i>
+                <span id="errorText"></span>
+            </div>
+
+            <!-- ── STEP 1: Enter details ─────────────────────── -->
+            <div id="step1" class="auth-step active">
+
+                <!-- Username (register only) -->
+                <div id="usernameField" class="hidden mb-5">
+                    <label class="block text-xs uppercase tracking-widest text-gray-500 mb-2">Display Name</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-user absolute left-3.5 top-1/2 -translate-y-1/2 text-luxury-gold/60 text-sm"></i>
+                        <input type="text" id="usernameInput" class="auth-input" placeholder="Create a username" autocomplete="off">
+                    </div>
+                </div>
+
+                <!-- Email Input (only method) -->
+                <div class="mb-6">
+                    <label class="block text-xs uppercase tracking-widest text-gray-500 mb-2">Email Address</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-at absolute left-3.5 top-1/2 -translate-y-1/2 text-luxury-gold/60 text-sm"></i>
+                        <input type="email" id="emailInput" class="auth-input" placeholder="you@example.com" autocomplete="off">
+                    </div>
+                </div>
+
+                <button class="auth-btn-primary" id="sendOtpBtn" onclick="sendOtp()">
+                    <i class="fa-solid fa-paper-plane mr-2"></i>Send OTP
+                </button>
+            </div>
+
+            <!-- ── STEP 2: OTP entry ────────────────────────── -->
+            <div id="step2" class="auth-step">
+
+                <!-- OTP Status Card: toggled dynamically by JS -->
+                <!-- Demo mode card (email without SMTP OR mobile SMS fallback) -->
+                <div id="otpDemoCard" class="otp-demo-card mb-6 hidden">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-flask text-luxury-gold text-xs"></i>
+                            <span class="text-luxury-gold text-xs uppercase tracking-widest font-bold" id="demoCardLabel">Demo Mode</span>
+                        </div>
+                        <span class="text-gray-500 text-xs">Your OTP is shown below</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-400 text-xs mb-1">Your one-time code:</p>
+                            <p id="demoOtpDisplay" class="font-serif text-3xl font-bold text-luxury-gold tracking-[0.25em]">------</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-gray-500 text-xs">Expires in</p>
+                            <p class="countdown text-luxury-gold font-bold text-lg" id="otpTimer">05:00</p>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-xs text-gray-600 flex items-center gap-1">
+                        <i class="fa-solid fa-shield-check text-luxury-gold/40"></i>
+                        Sent to: <span id="sentToLabel" class="text-gray-400 ml-1">--</span>
+                    </div>
+                </div>
+
+
+                <!-- OTP Boxes -->
+                <div class="mb-6">
+                    <label class="block text-xs uppercase tracking-widest text-gray-500 mb-4 text-center">Enter 6-Digit OTP</label>
+                    <div class="flex justify-center gap-2" id="otpBoxes">
+                        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" data-index="0">
+                        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" data-index="1">
+                        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" data-index="2">
+                        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" data-index="3">
+                        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" data-index="4">
+                        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" data-index="5">
+                    </div>
+                </div>
+
+                <button class="auth-btn-primary mb-4" id="verifyOtpBtn" onclick="verifyOtp()">
+                    <i class="fa-solid fa-unlock mr-2"></i>Verify &amp; Access
+                </button>
+
+                <!-- Resend -->
+                <div class="text-center">
+                    <button id="resendBtn" onclick="resendOtp()" class="text-xs text-gray-500 hover:text-luxury-gold transition-colors disabled:opacity-30" disabled>
+                        <i class="fa-solid fa-rotate-right mr-1"></i>
+                        Resend OTP <span id="resendTimer" class="countdown">(60s)</span>
+                    </button>
+                </div>
+
+                <!-- Back -->
+                <div class="text-center mt-4">
+                    <button onclick="goBack()" class="text-xs text-gray-600 hover:text-gray-400 transition-colors">
+                        <i class="fa-solid fa-arrow-left mr-1"></i>Change method
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Step indicator -->
+        <div class="flex items-center justify-center gap-2 mt-6">
+            <div class="step-dot active" id="dot1"></div>
+            <div class="step-dot" id="dot2"></div>
+        </div>
+
+    </div>
+
+    <script>
+    // ── Global State ──────────────────────────────────────────────────────────
+    let currentTab    = 'login';    // 'login' | 'register'
+    const currentMethod = 'email';    // Only email is supported now
+    let otpTimerInterval   = null;
+    let resendTimerInterval = null;
+    let sentValue     = '';
+
+    // ── Tab switch ────────────────────────────────────────────────────────────
+    function switchTab(tab) {
+        currentTab = tab;
+        hideError();
+        document.getElementById('tabLogin').classList.toggle('active',    tab === 'login');
+        document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
+        document.getElementById('tabLogin').classList.toggle('text-gray-500',    tab !== 'login');
+        document.getElementById('tabRegister').classList.toggle('text-gray-500', tab !== 'register');
+        document.getElementById('usernameField').classList.toggle('hidden', tab !== 'register');
+        goBack();
+    }
+
+    // ── Step navigation ───────────────────────────────────────────────────────
+    function goToStep(n) {
+        document.getElementById('step1').classList.toggle('active', n === 1);
+        document.getElementById('step2').classList.toggle('active', n === 2);
+        document.getElementById('dot1').classList.toggle('active', n === 1);
+        document.getElementById('dot2').classList.toggle('active', n === 2);
+    }
+
+    function goBack() {
+        clearInterval(otpTimerInterval);
+        clearInterval(resendTimerInterval);
+        clearOtpBoxes();
+        hideError();
+        goToStep(1);
+    }
+
+    // ── Error helpers ─────────────────────────────────────────────────────────
+    function showError(msg) {
+        document.getElementById('errorText').textContent   = msg;
+        document.getElementById('errorBanner').classList.remove('hidden');
+    }
+    function hideError() {
+        document.getElementById('errorBanner').classList.add('hidden');
+    }
+
+    // ── Button loading state ──────────────────────────────────────────────────
+    function setLoading(btnId, loading, label) {
+        const btn = document.getElementById(btnId);
+        btn.disabled = loading;
+        btn.innerHTML = loading
+            ? `<span class="btn-spinner"></span>${label}`
+            : label;
+    }
+
+    // ── OTP Boxes ─────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+        const boxes = document.querySelectorAll('.otp-box');
+        boxes.forEach((box, i) => {
+            box.addEventListener('input', e => {
+                const val = e.target.value.replace(/\D/g, '');
+                e.target.value = val ? val[0] : '';
+                box.classList.toggle('filled', !!val);
+                if (val && i < boxes.length - 1) boxes[i + 1].focus();
+            });
+            box.addEventListener('keydown', e => {
+                if (e.key === 'Backspace' && !box.value && i > 0) {
+                    boxes[i - 1].focus();
+                    boxes[i - 1].value = '';
+                    boxes[i - 1].classList.remove('filled');
+                }
+                if (e.key === 'ArrowLeft'  && i > 0) boxes[i - 1].focus();
+                if (e.key === 'ArrowRight' && i < boxes.length - 1) boxes[i + 1].focus();
+            });
+            box.addEventListener('paste', e => {
+                e.preventDefault();
+                const pasted = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+                [...pasted].forEach((ch, j) => {
+                    if (boxes[j]) { boxes[j].value = ch; boxes[j].classList.add('filled'); }
+                });
+                if (boxes[Math.min(pasted.length, 5)]) boxes[Math.min(pasted.length, 5)].focus();
+            });
+        });
+    });
+
+    function clearOtpBoxes() {
+        document.querySelectorAll('.otp-box').forEach(b => {
+            b.value = '';
+            b.classList.remove('filled');
+        });
+    }
+
+    function getOtpValue() {
+        return [...document.querySelectorAll('.otp-box')].map(b => b.value).join('');
+    }
+
+    // ── Send OTP ──────────────────────────────────────────────────────────────
+    async function sendOtp() {
+        hideError();
+        const username = document.getElementById('usernameInput').value.trim();
+        const value    = document.getElementById('emailInput').value.trim();
+
+        if (!value)               { showError('Please enter your email address.'); return; }
+        if (!value.includes('@')) { showError('Please enter a valid email address.'); return; }
+        if (currentTab === 'register' && !username) {
+            showError('Please enter a display name.');
+            return;
+        }
+
+        setLoading('sendOtpBtn', true, '<span class="btn-spinner"></span>Sending...');
+
+        try {
+            const res  = await fetch('/api/send-otp', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ method: 'email', value, action: currentTab, username })
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                showError(data.error || 'Failed to send OTP.');
+                setLoading('sendOtpBtn', false, '<i class="fa-solid fa-paper-plane mr-2"></i>Send OTP');
+                return;
+            }
+
+            sentValue = value;
+            // Always show the demo card (email OTP shown on screen until SMTP verified)
+            document.getElementById('otpDemoCard').classList.remove('hidden');
+            document.getElementById('demoOtpDisplay').textContent = data.demo_otp || '------';
+            document.getElementById('sentToLabel').textContent    = value;
+            clearOtpBoxes();
+            goToStep(2);
+            startOtpTimer(300);
+            startResendCooldown(60);
+            setTimeout(() => document.querySelector('.otp-box').focus(), 400);
+
+        } catch (err) {
+            showError('Network error. Please try again.');
+        }
+        setLoading('sendOtpBtn', false, '<i class="fa-solid fa-paper-plane mr-2"></i>Send OTP');
+    }
+
+    // ── Resend ────────────────────────────────────────────────────────────────
+    async function resendOtp() {
+        document.getElementById('resendBtn').disabled = true;
+        clearOtpBoxes();
+        hideError();
+
+        // Re-trigger send
+        const value    = sentValue;
+        const username = document.getElementById('usernameInput').value.trim();
+        const payload  = { method: currentMethod, value, action: currentTab, username };
+
+        const res  = await fetch('/api/send-otp', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            if (data.demo_otp) {
+                document.getElementById('demoOtpDisplay').textContent = data.demo_otp;
+            }
+            startOtpTimer(300);
+            startResendCooldown(60);
+        } else {
+            showError(data.error || 'Failed to resend OTP.');
+        }
+    }
+
+    // ── Verify OTP ────────────────────────────────────────────────────────────
+    async function verifyOtp() {
+        hideError();
+        const otp = getOtpValue();
+        if (otp.length !== 6) { showError('Please enter all 6 digits.'); return; }
+
+        setLoading('verifyOtpBtn', true, '<span class="btn-spinner"></span>Verifying...');
+
+        try {
+            const res  = await fetch('/api/verify-otp', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ method: currentMethod, value: sentValue, otp })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.status === 'success') {
+                clearInterval(otpTimerInterval);
+                clearInterval(resendTimerInterval);
+                window.location.href = '/';
+            } else {
+                showError(data.error || 'Verification failed.');
+                clearOtpBoxes();
+                document.querySelector('.otp-box').focus();
+            }
+        } catch (err) {
+            showError('Network error. Please try again.');
+        }
+        setLoading('verifyOtpBtn', false, '<i class="fa-solid fa-unlock mr-2"></i>Verify &amp; Access');
+    }
+
+    // ── Timers ────────────────────────────────────────────────────────────────
+    function startOtpTimer(seconds) {
+        clearInterval(otpTimerInterval);
+        const el1 = document.getElementById('otpTimer');
+        const el2 = document.getElementById('otpTimerSms');
+        const setTime = (t) => {
+            if (el1) el1.textContent = t;
+            if (el2) el2.textContent = t;
+        };
+        let remaining = seconds;
+        setTime(formatTime(remaining));
+        otpTimerInterval = setInterval(() => {
+            remaining--;
+            setTime(formatTime(remaining));
+            if (remaining <= 0) {
+                clearInterval(otpTimerInterval);
+                const expired = 'Expired';
+                if (el1) { el1.textContent = expired; el1.style.color = '#ef4444'; }
+                if (el2) { el2.textContent = expired; el2.style.color = '#ef4444'; }
+            }
+        }, 1000);
+    }
+
+    function startResendCooldown(seconds) {
+        clearInterval(resendTimerInterval);
+        const btn   = document.getElementById('resendBtn');
+        const label = document.getElementById('resendTimer');
+        btn.disabled = true;
+        let rem = seconds;
+        label.textContent = `(${rem}s)`;
+        resendTimerInterval = setInterval(() => {
+            rem--;
+            label.textContent = `(${rem}s)`;
+            if (rem <= 0) {
+                clearInterval(resendTimerInterval);
+                btn.disabled      = false;
+                label.textContent = '';
+            }
+        }, 1000);
+    }
+
+    function formatTime(s) {
+        const m = Math.floor(s / 60).toString().padStart(2, '0');
+        const sec = (s % 60).toString().padStart(2, '0');
+        return `${m}:${sec}`;
+    }
+    </script>
+</body>
+</html>

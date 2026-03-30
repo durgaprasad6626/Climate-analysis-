@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/Users/durga prasad/ -name emerald_depth_login_bg* -o -name lavender_dusk_main_bg*)",
+      "Bash(cp \"/c/Users/durga prasad/.gemini/antigravity/brain/c91a507d-ea0b-4bae-816b-80ce5aeca175/emerald_depth_login_bg_png_1774544899186.png\" \"/c/Users/durga prasad/OneDrive/Desktop/temp/static/\")",
+      "Bash(cp \"/c/Users/durga prasad/.gemini/antigravity/brain/c91a507d-ea0b-4bae-816b-80ce5aeca175/lavender_dusk_main_bg_png_1774544928689.png\" \"/c/Users/durga prasad/OneDrive/Desktop/temp/static/\")",
+      "Bash(curl -s http://127.0.0.1:5000/login)",
+      "Bash(python -c \":*)"
+    ]
+  }
+}

@@ -1,0 +1,389 @@
+/* ============================================
+   HeatwaveGuard - Premium Custom Styles
+   ============================================ */
+
+:root {
+    /* Emerald Depth (Login Defaults) */
+    --emerald-900: #064e3b;
+    --emerald-800: #065f46;
+    --emerald-500: #10b981;
+    --emerald-accent: #059669;
+    
+    /* Lavender Dusk (Dashboard Defaults) */
+    --dusk-900: #2e1065;
+    --dusk-800: #4c1d95;
+    --dusk-500: #8b5cf6;
+    --dusk-accent: #7c3aed;
+    
+    --luxury-gold: #d4af37;
+    --luxury-gold-glow: rgba(212,175,55,0.4);
+}
+
+/* ── Fade-in-up ───────────────────────────── */
+@layer utilities {
+    .animate-fade-in-up {
+        animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .animate-gradient-x {
+        animation: gradientShift 4s ease infinite;
+        background-size: 200% 200%;
+    }
+    .animate-glow-pulse {
+        animation: glowPulse 2.5s ease-in-out infinite;
+    }
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes gradientShift {
+    0%   { background-position: 0%   50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0%   50%; }
+}
+
+@keyframes glowPulse {
+    0%, 100% { box-shadow: 0 0 12px 2px rgba(212,175,55,0.25); }
+    50%       { box-shadow: 0 0 32px 8px rgba(212,175,55,0.55); }
+}
+
+/* ── Background Themes ─────────────────────── */
+.theme-emerald {
+    background-color: var(--emerald-900);
+    color: #ecfdf5;
+}
+.theme-lavender {
+    background-color: var(--dusk-900);
+    color: #f5f3ff;
+}
+
+/* ── Weather Animations ───────────────────── */
+.mist-overlay {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 50%, rgba(255,255,255,0.02) 100%);
+    pointer-events: none;
+    z-index: 1;
+    animation: mistDrift 20s linear infinite;
+}
+
+@keyframes mistDrift {
+    0%   { background-position: 0% 0%; }
+    100% { background-position: 100% 100%; }
+}
+
+.glow-shimmer {
+    position: relative;
+    overflow: hidden;
+}
+.glow-shimmer::after {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%; width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    animation: glowRotate 12s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes glowRotate {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* ── Custom Scrollbar ─────────────────────── */
+::-webkit-scrollbar        { width: 6px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.1); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--luxury-gold); }
+
+/* ── Animated gradient hero text ─────────── */
+.hero-gradient-text {
+    background: linear-gradient(270deg, #d4af37, #fde047, #ffffff, #d4af37);
+    background-size: 300% 300%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: gradientShift 5s ease infinite;
+}
+
+/* ── GPS Button shimmer border ───────────── */
+.gps-btn {
+    position: relative;
+    overflow: hidden;
+    background: transparent;
+    transition: all 0.4s ease;
+}
+.gps-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(212,175,55,0.3), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.6s ease;
+}
+.gps-btn:hover::before { transform: translateX(100%); }
+.gps-btn:hover {
+    background: linear-gradient(135deg, #d4af37, #f59e0b);
+    box-shadow: 0 0 28px rgba(212,175,55,0.6);
+}
+.gps-btn:hover .gps-icon,
+.gps-btn:hover .gps-text { color: #000 !important; }
+
+/* ── Search Bar ───────────────────────────── */
+.search-wrapper {
+    position: relative;
+}
+.search-input {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(30,41,59,0.8);
+    backdrop-filter: blur(12px);
+    transition: border-color 0.3s, box-shadow 0.3s;
+    color: #fff;
+}
+.search-input:focus {
+    outline: none;
+    border-color: #d4af37;
+    box-shadow: 0 0 0 2px rgba(212,175,55,0.2), 0 0 24px rgba(212,175,55,0.15);
+}
+.search-input::placeholder { color: #4b5563; }
+
+.search-btn {
+    background: linear-gradient(135deg, #d4af37, #f59e0b);
+    transition: all 0.3s ease;
+    color: #000;
+    font-weight: 700;
+}
+.search-btn:hover {
+    background: linear-gradient(135deg, #f59e0b, #ffffff);
+    box-shadow: 0 0 20px rgba(212,175,55,0.5);
+}
+
+/* ── Autocomplete Dropdown ────────────────── */
+#autocompleteDropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: rgba(10, 10, 18, 0.97);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(212,175,55,0.3);
+    border-radius: 4px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(212,175,55,0.1);
+    z-index: 9999;
+    overflow: hidden;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.autocomplete-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    transition: background 0.2s, padding-left 0.2s;
+}
+.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:hover {
+    background: rgba(212,175,55,0.12);
+    padding-left: 24px;
+}
+.autocomplete-item .location-icon {
+    color: #d4af37;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+.autocomplete-item .location-name {
+    font-size: 0.9rem;
+    color: #e2e8f0;
+    font-weight: 500;
+}
+.autocomplete-item .location-region {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 2px;
+    letter-spacing: 0.05em;
+}
+.autocomplete-item:hover .location-name { color: #d4af37; }
+
+/* ── Metric Cards ─────────────────────────── */
+.metric-card {
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(30,41,59,0.6);
+    border-radius: 6px;
+    padding: 2rem;
+    transition: border-color 0.4s, box-shadow 0.4s, transform 0.3s;
+    position: relative;
+    overflow: hidden;
+}
+.metric-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(212,175,55,0.04), transparent 60%);
+    pointer-events: none;
+}
+.metric-card:hover {
+    border-color: rgba(212,175,55,0.5);
+    box-shadow: 0 0 32px rgba(212,175,55,0.12), 0 8px 24px rgba(0,0,0,0.4);
+    transform: translateY(-2px);
+}
+.metric-card:hover .metric-icon { transform: scale(1.15) rotate(-5deg); }
+.metric-icon {
+    font-size: 1.5rem;
+    color: #d4af37;
+    margin-bottom: 1rem;
+    display: block;
+    transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+}
+.metric-card-featured {
+    background: linear-gradient(135deg, rgba(30,41,59,0.9), rgba(0,0,0,0.95));
+    border: 1px solid #d4af37;
+    box-shadow: 0 0 32px rgba(212,175,55,0.18);
+    border-radius: 6px;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+}
+.metric-card-featured::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #d4af37, #fde047, #d4af37, transparent);
+    animation: gradientShift 3s ease infinite;
+    background-size: 200% 100%;
+}
+
+/* ── Alert Banner ─────────────────────────── */
+.alert-banner {
+    border-radius: 8px;
+    overflow: hidden;
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(30,41,59,0.6);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+
+/* ── Resource Cards ───────────────────────── */
+.resource-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(30,41,59,0.7);
+    border-radius: 6px;
+    padding: 1.25rem 1.5rem;
+    transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+}
+.resource-card:hover {
+    transform: translateX(4px);
+    box-shadow: -4px 0 24px rgba(212,175,55,0.1);
+}
+.resource-card.hospital:hover  { border-color: rgba(244,63,94,0.5); box-shadow: -4px 0 24px rgba(244,63,94,0.12); }
+.resource-card.transit:hover   { border-color: rgba(212,175,55,0.5); box-shadow: -4px 0 24px rgba(212,175,55,0.12); }
+
+/* ── Background Particles / Orbs ─────────── */
+.bg-orb {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    filter: blur(100px);
+    opacity: 0.18;
+    z-index: 0;
+}
+.bg-orb-1 {
+    width: 55vw; height: 55vw;
+    top: -20%; left: -15%;
+    background: radial-gradient(circle, #1e293b 0%, transparent 70%);
+    animation: orbFloat1 18s ease-in-out infinite;
+}
+.bg-orb-2 {
+    width: 45vw; height: 45vw;
+    bottom: -20%; right: -10%;
+    background: radial-gradient(circle, #0f172a 0%, transparent 70%);
+    animation: orbFloat2 22s ease-in-out infinite;
+}
+.bg-orb-3 {
+    width: 30vw; height: 30vw;
+    top: 40%; left: 60%;
+    background: radial-gradient(circle, rgba(212,175,55,0.5) 0%, transparent 70%);
+    animation: orbFloat3 15s ease-in-out infinite;
+    opacity: 0.06;
+}
+
+@keyframes orbFloat1 {
+    0%, 100% { transform: translate(0,   0   ) scale(1);    }
+    33%       { transform: translate(3%,  5%  ) scale(1.04); }
+    66%       { transform: translate(-2%, 3%  ) scale(0.97); }
+}
+@keyframes orbFloat2 {
+    0%, 100% { transform: translate(0,   0   ) scale(1);    }
+    40%       { transform: translate(-4%, -3% ) scale(1.05); }
+    75%       { transform: translate(2%,  4%  ) scale(0.96); }
+}
+@keyframes orbFloat3 {
+    0%, 100% { transform: translate(0,   0   ); }
+    50%       { transform: translate(-5%, -6% ); }
+}
+
+/* ── Header Glow Line ─────────────────────── */
+.header-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(212,175,55,0.4), rgba(148,163,184,0.2), rgba(212,175,55,0.4), transparent);
+}
+
+/* ── OR Divider ───────────────────────────── */
+.or-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(212,175,55,0.5), transparent);
+    flex: 1;
+}
+
+/* ── Loader ───────────────────────────────── */
+.loader-ring {
+    width: 52px; height: 52px;
+    border: 2px solid rgba(30,41,59,0.6);
+    border-top-color: #d4af37;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    box-shadow: 0 0 18px rgba(212,175,55,0.3);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Google Map Section ───────────────────── */
+.map-section {
+    width: 100%;
+}
+
+.map-container {
+    width: 100%;
+    height: 380px;
+    border-radius: 10px;
+    border: 1px solid rgba(212,175,55,0.35);
+    box-shadow:
+        0 0 0 1px rgba(212,175,55,0.1),
+        0 8px 40px rgba(0,0,0,0.6),
+        0 0 60px rgba(139,92,246,0.08);
+    overflow: hidden;
+    /* Dark-mode filter for the Google Map tiles */
+    filter: invert(92%) hue-rotate(180deg) brightness(0.88) saturate(0.85);
+    transition: box-shadow 0.4s ease;
+}
+
+.map-container:hover {
+    box-shadow:
+        0 0 0 1px rgba(212,175,55,0.3),
+        0 12px 60px rgba(0,0,0,0.7),
+        0 0 80px rgba(212,175,55,0.1);
+}
+
+/* Keep marker/UI icons uninverted inside the map */
+.map-container img,
+.map-container .gm-style img {
+    filter: invert(100%) hue-rotate(180deg);
+}
+
