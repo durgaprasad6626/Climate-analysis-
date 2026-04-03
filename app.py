@@ -315,7 +315,10 @@ def predict_heatwave():
 
         if query:
             geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={query}&count=1&language=en&format=json"
-            geo_res = requests.get(geo_url)
+            try:
+                geo_res = requests.get(geo_url, timeout=10)
+            except requests.exceptions.RequestException as e:
+                return jsonify({"error": f"Geocoding service unreachable: {str(e)}"}), 502
             if geo_res.status_code == 200:
                 results = geo_res.json().get('results')
                 if results:
@@ -328,13 +331,30 @@ def predict_heatwave():
         if not lat or not lng:
             return jsonify({"error": "Latitude/longitude or location query required."}), 400
 
+        # Ensure lat/lng are floats
+        lat = float(lat)
+        lng = float(lng)
+
         weather_url = (f"https://api.open-meteo.com/v1/forecast"
                        f"?latitude={lat}&longitude={lng}"
                        f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m"
                        f"&hourly=uv_index&timezone=auto")
-        res = requests.get(weather_url)
-        if res.status_code != 200:
-            return jsonify({"error": "Failed to fetch weather data."}), 500
+
+        # Retry once on failure (handles Render's cold-start network delays)
+        res = None
+        for attempt in range(2):
+            try:
+                res = requests.get(weather_url, timeout=15)
+                if res.status_code == 200:
+                    break
+            except requests.exceptions.RequestException:
+                if attempt == 1:
+                    return jsonify({"error": "Weather service unreachable. Please try again."}), 502
+                time.sleep(1)
+
+        if res is None or res.status_code != 200:
+            status_code = res.status_code if res is not None else 0
+            return jsonify({"error": f"Failed to fetch weather data (HTTP {status_code}). Please try again."}), 502
 
         weather_data    = res.json()
         current_weather = weather_data.get('current', {})
@@ -365,6 +385,7 @@ def predict_heatwave():
         })
 
     except Exception as e:
+        print(f"[predict_heatwave error] {e}")
         return jsonify({"error": str(e)}), 500
 
 
