@@ -29,6 +29,11 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <!-- ✅ Google Maps JavaScript API — Replace YOUR_API_KEY below -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCXUzlgmgrZi7x05mFVKSIBu02vA_eb0Gk&callback=initMap" async defer></script>
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- jsPDF + html2canvas for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body class="theme-lavender text-luxury-silver font-sans min-h-screen relative overflow-x-hidden antialiased flex flex-col">
 
@@ -188,6 +193,233 @@
 
                 <!-- Divider -->
                 <div class="header-line mb-14"></div>
+
+                <!-- ════════════════════════════════════════════════════════ -->
+                <!-- AI FEATURE 1: 72-Hour Forecast Trend                    -->
+                <!-- ════════════════════════════════════════════════════════ -->
+                <div id="forecastSection" class="mb-14">
+                    <h3 class="flex items-center gap-3 font-serif text-xl tracking-wider text-luxury-gold mb-6 drop-shadow-[0_0_10px_rgba(212,175,55,0.3)]">
+                        <i class="fa-solid fa-chart-line"></i>
+                        72-Hour Risk Forecast
+                        <span class="ml-auto text-xs uppercase tracking-widest text-dusk-400/50 font-sans font-light">ML Trend Analysis</span>
+                    </h3>
+                    <div id="forecastGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <div class="header-line mb-14"></div>
+
+                <!-- ════════════════════════════════════════════════════════ -->
+                <!-- AI FEATURE 2: Explainable AI                            -->
+                <!-- ════════════════════════════════════════════════════════ -->
+                <div id="xaiSection" class="mb-14">
+                    <h3 class="flex items-center gap-3 font-serif text-xl tracking-wider text-dusk-400 mb-2 drop-shadow-[0_0_10px_rgba(139,92,246,0.3)]">
+                        <i class="fa-solid fa-brain"></i>
+                        Why This Risk?
+                        <span class="ml-auto text-xs uppercase tracking-widest text-dusk-400/50 font-sans font-light">Explainable AI</span>
+                    </h3>
+                    <p id="xaiSummary" class="text-xs text-luxury-gold/60 uppercase tracking-widest mb-6 font-light pl-1"></p>
+                    <div id="xaiFactors" class="flex flex-col gap-3">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <div class="header-line mb-14"></div>
+
+                <!-- ════════════════════════════════════════════════════════ -->
+                <!-- AI FEATURE 3: Personalized Risk Score                   -->
+                <!-- ════════════════════════════════════════════════════════ -->
+                <div id="personalRiskSection" class="mb-14">
+                    <h3 class="flex items-center gap-3 font-serif text-xl tracking-wider text-rose-400 mb-6 drop-shadow-[0_0_10px_rgba(244,63,94,0.3)]">
+                        <i class="fa-solid fa-user-shield"></i>
+                        Personalized Risk Score
+                        <span class="ml-auto text-xs uppercase tracking-widest text-dusk-400/50 font-sans font-light">Your Profile</span>
+                    </h3>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+
+                        <!-- Form Panel -->
+                        <div class="bg-[#0d1117]/80 border border-dusk-800/40 rounded-lg p-7 backdrop-blur-sm">
+                            <p class="text-xs uppercase tracking-widest text-gray-500 mb-6 font-semibold">Enter your profile for a personalized assessment</p>
+
+                            <div class="mb-5">
+                                <label class="block text-xs uppercase tracking-widest text-gray-400 mb-2 font-semibold" for="pr-age">Age</label>
+                                <input type="number" id="pr-age" min="1" max="110" placeholder="e.g. 67"
+                                    class="w-full bg-black/50 border border-dusk-800/60 text-white rounded px-4 py-3 text-sm focus:outline-none focus:border-dusk-400/60 transition-colors placeholder-gray-700">
+                            </div>
+
+                            <div class="mb-5">
+                                <label class="block text-xs uppercase tracking-widest text-gray-400 mb-2 font-semibold" for="pr-occupation">Occupation</label>
+                                <select id="pr-occupation"
+                                    class="w-full bg-black/50 border border-dusk-800/60 text-white rounded px-4 py-3 text-sm focus:outline-none focus:border-dusk-400/60 transition-colors appearance-none">
+                                    <option value="office_worker">Office Worker (Indoor)</option>
+                                    <option value="student">Student</option>
+                                    <option value="athlete">Athlete</option>
+                                    <option value="delivery">Delivery / Field Worker</option>
+                                    <option value="gardener">Gardener</option>
+                                    <option value="construction">Construction Worker</option>
+                                    <option value="farmer">Farmer</option>
+                                    <option value="outdoor_labor">General Outdoor Labour</option>
+                                    <option value="soldier">Military / Soldier</option>
+                                    <option value="retired">Retired</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-6">
+                                <label class="block text-xs uppercase tracking-widest text-gray-400 mb-3 font-semibold">Health Conditions <span class="text-gray-700 normal-case tracking-normal">(select all that apply)</span></label>
+                                <div id="conditionPills" class="flex flex-wrap gap-2">
+                                    <button type="button" data-cond="diabetes" class="condition-pill">Diabetes</button>
+                                    <button type="button" data-cond="heart_disease" class="condition-pill">Heart Disease</button>
+                                    <button type="button" data-cond="asthma" class="condition-pill">Asthma</button>
+                                    <button type="button" data-cond="hypertension" class="condition-pill">Hypertension</button>
+                                    <button type="button" data-cond="kidney_disease" class="condition-pill">Kidney Disease</button>
+                                    <button type="button" data-cond="pregnant" class="condition-pill">Pregnant</button>
+                                    <button type="button" data-cond="obesity" class="condition-pill">Obesity</button>
+                                </div>
+                            </div>
+
+                            <button id="calcPersonalRiskBtn"
+                                class="w-full py-3 border border-rose-500/50 text-rose-400 hover:bg-rose-900/30 transition-all duration-300 text-xs uppercase tracking-widest font-bold rounded flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-calculator"></i>
+                                Calculate My Risk
+                            </button>
+                        </div>
+
+                        <!-- Result Panel -->
+                        <div id="personalRiskResult" class="hidden flex flex-col items-center justify-center bg-[#0d1117]/80 border border-dusk-800/40 rounded-lg p-8 backdrop-blur-sm min-h-[280px]">
+                            <!-- Score Ring -->
+                            <div class="relative w-36 h-36 mb-6">
+                                <svg class="w-full h-full -rotate-90" viewBox="0 0 120 120">
+                                    <circle cx="60" cy="60" r="50" fill="none" stroke="#1e293b" stroke-width="10"/>
+                                    <circle id="scoreCircle" cx="60" cy="60" r="50" fill="none"
+                                        stroke="#a855f7" stroke-width="10"
+                                        stroke-linecap="round"
+                                        stroke-dasharray="314.16"
+                                        stroke-dashoffset="314.16"
+                                        style="transition: stroke-dashoffset 1.2s ease, stroke 0.6s ease"/>
+                                </svg>
+                                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span id="scoreNumber" class="text-4xl font-serif font-bold text-white">0</span>
+                                    <span class="text-xs uppercase tracking-widest text-gray-500">/100</span>
+                                </div>
+                            </div>
+
+                            <p id="personalRiskLabel" class="font-serif text-2xl font-bold text-dusk-400 mb-2">--</p>
+                            <p class="text-xs uppercase tracking-widest text-gray-600 mb-6">Personal Risk Level</p>
+
+                            <!-- Detail Notes -->
+                            <ul id="personalRiskNotes" class="flex flex-col gap-2 w-full text-left">
+                                <!-- Rendered by JS -->
+                            </ul>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ── AI FEATURE 4: Safety Recommendation Engine ───────── -->
+                <div id="safetyEngineSection" class="hidden mb-16">
+                    <h3 class="flex items-center gap-3 font-serif text-xl tracking-wider text-rose-500 mb-6 drop-shadow-[0_0_10px_rgba(244,63,94,0.3)] uppercase">
+                        <i class="fa-solid fa-bell-on flex-shrink-0"></i>
+                        Safety Recommendation Engine
+                        <span class="ml-auto text-xs font-sans tracking-widest text-gray-500 font-medium">DYNAMIC ALERTS</span>
+                    </h3>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <!-- Dynamic Alerts List -->
+                        <div class="flex flex-col gap-3" id="dynamicAlertsList">
+                            <!-- Populated by JS -->
+                        </div>
+
+                        <!-- Daily Safety Plan Timeline -->
+                        <div class="bg-[#0d1117]/60 border border-slate-800/80 rounded-lg p-6 backdrop-blur flex flex-col justify-between">
+                            <h4 class="text-xs uppercase tracking-widest text-gray-400 mb-5 font-semibold">Daily Heat Safety Plan</h4>
+                            <div class="flex flex-col gap-4 relative" id="dailyPlanTimeline">
+                                <!-- Line behind timeline -->
+                                <div class="absolute left-[15px] top-4 bottom-4 w-px bg-slate-800/80 -z-10"></div>
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="header-line mb-14"></div>
+
+                <!-- ── DATA VISUALIZATION DASHBOARD ────────────────────── -->
+                <div id="vizDashboard" class="hidden mb-16">
+                    <h3 class="flex items-center gap-3 font-serif text-xl tracking-wider text-dusk-400 mb-2 drop-shadow-[0_0_10px_rgba(139,92,246,0.3)] uppercase">
+                        <i class="fa-solid fa-chart-line flex-shrink-0"></i>
+                        Data Visualization
+                        <span class="ml-auto text-xs font-sans tracking-widest text-gray-500 font-medium">LIVE TELEMETRY</span>
+                    </h3>
+                    <p class="text-xs text-gray-600 mb-8 tracking-wide">Today's hourly breakdown · Historical comparison · Export as PDF</p>
+
+                    <!-- Download & Tab Controls -->
+                    <div class="flex items-center justify-between gap-4 mb-6 flex-wrap">
+                        <!-- Tabs -->
+                        <div class="flex gap-2 flex-wrap">
+                            <button class="viz-tab active" data-tab="temp" id="tab-temp">
+                                <i class="fa-solid fa-temperature-half mr-1.5"></i>Temperature
+                            </button>
+                            <button class="viz-tab" data-tab="heatindex" id="tab-heatindex">
+                                <i class="fa-solid fa-fire mr-1.5"></i>Heat Index
+                            </button>
+                            <button class="viz-tab" data-tab="history" id="tab-history">
+                                <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>Historical
+                            </button>
+                        </div>
+                        <!-- PDF Download -->
+                        <button id="downloadReportBtn"
+                            class="flex items-center gap-2 px-5 py-2.5 border border-luxury-gold/40 text-luxury-gold hover:bg-luxury-gold hover:text-black transition-all duration-300 text-xs font-bold tracking-widest uppercase rounded">
+                            <i class="fa-solid fa-file-pdf"></i>Download Report
+                        </button>
+                    </div>
+
+                    <!-- Chart Panels -->
+                    <div id="chartReportArea">
+                        <!-- Temp Chart -->
+                        <div id="panel-temp" class="viz-panel">
+                            <div class="viz-card">
+                                <p class="text-xs uppercase tracking-widest text-gray-500 mb-4 font-semibold">
+                                    <i class="fa-solid fa-temperature-half mr-2 opacity-50"></i>Temperature vs Time — Today (24h)
+                                </p>
+                                <div class="relative" style="height: 280px;">
+                                    <canvas id="chartTemp"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Heat Index Chart -->
+                        <div id="panel-heatindex" class="viz-panel hidden">
+                            <div class="viz-card">
+                                <p class="text-xs uppercase tracking-widest text-gray-500 mb-4 font-semibold">
+                                    <i class="fa-solid fa-fire mr-2 opacity-50"></i>Heat Index Trend — Today (24h)
+                                </p>
+                                <div class="relative" style="height: 280px;">
+                                    <canvas id="chartHeatIndex"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Historical Comparison Chart -->
+                        <div id="panel-history" class="viz-panel hidden">
+                            <div class="viz-card">
+                                <p class="text-xs uppercase tracking-widest text-gray-500 mb-4 font-semibold">
+                                    <i class="fa-solid fa-clock-rotate-left mr-2 opacity-50"></i>Historical Comparison — Today vs Yesterday vs Last Week
+                                </p>
+                                <div class="viz-historical-legend mb-4" id="histLegend">
+                                    <span class="hist-badge today">Today</span>
+                                    <span class="hist-badge yesterday">Yesterday</span>
+                                    <span class="hist-badge lastweek">Last Week</span>
+                                </div>
+                                <div class="relative" style="height: 280px;">
+                                    <canvas id="chartHistory"></canvas>
+                                </div>
+                                <div id="histLoading" class="hidden flex items-center gap-3 text-gray-600 text-xs mt-3">
+                                    <i class="fa-solid fa-spinner fa-spin"></i>Fetching historical data…
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- ── Google Map ──────────────────────── -->
                 <div class="map-section mb-14">

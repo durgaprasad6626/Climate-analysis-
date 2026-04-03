@@ -303,6 +303,252 @@ def determine_severity_level(heat_index, temp=None):
     else:
         return "Low", "Normal conditions. Keep an eye on the weather and stay hydrated."
 
+# ── AI Feature Helpers ───────────────────────────────────────────────────────
+
+RISK_ORDER = ["Low", "Moderate", "High", "Extreme"]
+
+def _clamp_risk(index):
+    return RISK_ORDER[max(0, min(index, len(RISK_ORDER) - 1))]
+
+def build_forecast_trend(lat, lng):
+    """Fetch 72-hour hourly forecast and bucket into 3 x 24-hour windows."""
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lng}"
+            f"&hourly=temperature_2m,relative_humidity_2m,uv_index,apparent_temperature"
+            f"&forecast_days=3&timezone=auto"
+        )
+        res = requests.get(url, timeout=15)
+        if res.status_code != 200:
+            return []
+        hourly = res.json().get('hourly', {})
+        temps   = hourly.get('temperature_2m', [])
+        humids  = hourly.get('relative_humidity_2m', [])
+        uvs     = hourly.get('uv_index', [])
+
+        windows = []
+        labels  = ["Next 0–24h", "Next 24–48h", "Next 48–72h"]
+        for i, label in enumerate(labels):
+            start = i * 24
+            end   = start + 24
+            t_win = temps[start:end]
+            h_win = humids[start:end]
+            u_win = uvs[start:end]
+            if not t_win:
+                continue
+            avg_temp = round(sum(t_win) / len(t_win), 1)
+            avg_hum  = round(sum(h_win) / len(h_win), 1) if h_win else 50
+            avg_uv   = round(max(u_win), 1) if u_win else 0
+            hi = calculate_heat_index(avg_temp, avg_hum)
+            risk, _ = determine_severity_level(hi, temp=avg_temp)
+            windows.append({
+                "window":       label,
+                "risk_level":   risk,
+                "avg_temp":     avg_temp,
+                "avg_humidity": avg_hum,
+                "avg_uv":       avg_uv,
+                "heat_index":   hi
+            })
+        return windows
+    except Exception as e:
+        print(f"[forecast_trend error] {e}")
+        return []
+
+
+def generate_xai_explanation(temp, humidity, uv_index, heat_index, risk_level):
+    """Return a list of factor dicts explaining why the risk level was assigned."""
+    factors = []
+
+    # Temperature factor
+    if temp >= 40:
+        t_label, t_weight = "Extreme", 100
+    elif temp >= 35:
+        t_label, t_weight = "High", 80
+    elif temp >= 28:
+        t_label, t_weight = "Moderate", 55
+    elif temp <= 0:
+        t_label, t_weight = "Freezing", 85
+    elif temp <= -10:
+        t_label, t_weight = "Dangerous Cold", 95
+    else:
+        t_label, t_weight = "Normal", 25
+    factors.append({"icon": "🌡️", "label": f"Temperature ({temp}°C)", "contribution": t_label, "weight": t_weight})
+
+    # Humidity factor
+    if humidity < 20:
+        h_label, h_weight = "Very Low — Rapid dehydration risk", 75
+    elif humidity < 40:
+        h_label, h_weight = "Low — Reduces cooling efficiency", 50
+    elif humidity > 80:
+        h_label, h_weight = "Very High — Sweat cannot evaporate", 85
+    elif humidity > 60:
+        h_label, h_weight = "High — Reduces body cooling", 60
+    else:
+        h_label, h_weight = "Comfortable Range", 20
+    factors.append({"icon": "💧", "label": f"Humidity ({humidity}%)", "contribution": h_label, "weight": h_weight})
+
+    # UV Index factor
+    if uv_index >= 11:
+        u_label, u_weight = "Extreme — Immediate harm", 100
+    elif uv_index >= 8:
+        u_label, u_weight = "Very High — Severe sunburn risk", 85
+    elif uv_index >= 6:
+        u_label, u_weight = "High — Sunburn within 25 min", 65
+    elif uv_index >= 3:
+        u_label, u_weight = "Moderate — Protection needed", 40
+    else:
+        u_label, u_weight = "Low", 15
+    factors.append({"icon": "☀️", "label": f"UV Index ({uv_index})", "contribution": u_label, "weight": u_weight})
+
+    # Heat Index factor
+    if heat_index >= 54:
+        hi_label, hi_weight = "Extreme — Heatstroke imminent", 100
+    elif heat_index >= 41:
+        hi_label, hi_weight = "Dangerous — Heat exhaustion likely", 85
+    elif heat_index >= 32:
+        hi_label, hi_weight = "Caution — Heat exhaustion possible", 60
+    else:
+        hi_label, hi_weight = "Normal Range", 20
+    factors.append({"icon": "🔥", "label": f"Heat Index ({heat_index}°C)", "contribution": hi_label, "weight": hi_weight})
+
+    # Generate summary sentence
+    top = sorted(factors, key=lambda x: -x['weight'])[:2]
+    top_names = " + ".join(f.get('label', '').split('(')[0].strip() for f in top)
+    summary = f"{top_names} = {risk_level} Risk"
+
+    return {"factors": factors, "summary": summary}
+
+
+def calculate_personal_risk(base_level, age, occupation, conditions):
+    """Apply personal multipliers to the base risk level and return a 0–100 score."""
+    # Map base level to numeric index
+    level_map = {
+        "Low": 0, "Moderate": 1, "High": 2, "Extreme": 3,
+        "Moderate Cold": 1, "High Cold": 2, "Extreme Cold": 3
+    }
+    base_idx = level_map.get(base_level, 0)
+    score    = [10, 35, 65, 90][base_idx]  # base score
+
+    detail_notes = []
+
+    # Age modifier
+    try:
+        age = int(age)
+    except (TypeError, ValueError):
+        age = 30
+    if age >= 65:
+        score       += 18
+        detail_notes.append("Elderly (65+): Very high vulnerability to heat/cold stress")
+    elif age >= 50:
+        score       += 8
+        detail_notes.append("Middle-aged (50+): Moderate vulnerability increase")
+    elif age <= 5:
+        score       += 12
+        detail_notes.append("Young child: High vulnerability to extreme temperatures")
+    elif age <= 12:
+        score       += 6
+        detail_notes.append("Child: Elevated heat sensitivity")
+
+    # Occupation modifier
+    outdoor_occupations = {
+        "construction":  15,
+        "farmer":        15,
+        "outdoor_labor": 15,
+        "delivery":      10,
+        "soldier":       12,
+        "athlete":       10,
+        "gardener":      8,
+    }
+    occ_lower = (occupation or "").lower().replace(" ", "_")
+    occ_score = outdoor_occupations.get(occ_lower, 0)
+    if occ_score:
+        score += occ_score
+        detail_notes.append(f"Occupation ({occupation}): Prolonged outdoor exposure increases risk")
+
+    # Health conditions modifier
+    condition_weights = {
+        "diabetes":      12,
+        "heart_disease": 15,
+        "asthma":        10,
+        "hypertension":  10,
+        "kidney_disease":12,
+        "pregnant":      10,
+        "obesity":       8,
+    }
+    for cond in (conditions or []):
+        w = condition_weights.get(cond.lower().replace(" ", "_"), 0)
+        if w:
+            score += w
+            detail_notes.append(f"{cond.replace('_', ' ').title()}: Increases physiological heat stress")
+
+    score = min(score, 100)
+
+    # Map final score to label
+    if score >= 85:
+        personal_level = "Critical"
+    elif score >= 70:
+        personal_level = "Very High"
+    elif score >= 50:
+        personal_level = "High"
+    elif score >= 30:
+        personal_level = "Moderate"
+    else:
+        personal_level = "Low"
+
+    return {
+        "personal_risk_level": personal_level,
+        "risk_score":          score,
+        "detail_notes":        detail_notes
+    }
+
+def generate_dynamic_recommendations(temp, uv, heat_index):
+    recs = []
+    if temp > 40:
+        recs.append({"type": "critical", "icon": "fa-triangle-exclamation", "message": "Extreme heat! Avoid outdoor activity entirely."})
+    elif temp > 35:
+        recs.append({"type": "warning", "icon": "fa-temperature-arrow-up", "message": "High temps. Limit outdoor time and hydrate frequently."})
+    elif temp < 0:
+        recs.append({"type": "critical", "icon": "fa-icicles", "message": "Freezing conditions! Stay indoors and cover all exposed skin."})
+    
+    if uv >= 8:
+        recs.append({"type": "warning", "icon": "fa-sun", "message": "High UV index. Wear SPF 50+ and UV-blocking sunglasses."})
+    elif uv >= 5:
+        recs.append({"type": "info", "icon": "fa-umbrella", "message": "Moderate UV. Sun protection recommended."})
+
+    if heat_index > 41:
+        recs.append({"type": "critical", "icon": "fa-droplet-slash", "message": "High risk of heat cramps and exhaustion."})
+    
+    if not recs:
+        recs.append({"type": "safe", "icon": "fa-shield-check", "message": "Conditions are safe. Maintain normal hydration."})
+    
+    return recs
+
+def generate_daily_plan(hourly_data):
+    if not hourly_data or 'temperature_2m' not in hourly_data:
+        return []
+    
+    temps = hourly_data['temperature_2m'][:24]
+    humids = hourly_data.get('relative_humidity_2m', [50]*24)[:24]
+    
+    if len(temps) < 24:
+        return []
+    
+    def evaluate_period(t_list, h_list, start_idx, end_idx):
+        win_t = t_list[start_idx:end_idx]
+        win_h = h_list[start_idx:end_idx]
+        avg_t = sum(win_t) / len(win_t)
+        avg_h = sum(win_h) / len(win_h)
+        hi = calculate_heat_index(avg_t, avg_h)
+        risk, _ = determine_severity_level(hi, temp=avg_t)
+        return {"avg_temp": round(avg_t, 1), "risk_level": risk}
+
+    return [
+        {"period": "Morning", "time": "06:00 - 11:59",  **evaluate_period(temps, humids, 6, 12)},
+        {"period": "Afternoon", "time": "12:00 - 17:59", **evaluate_period(temps, humids, 12, 18)},
+        {"period": "Evening", "time": "18:00 - 23:59",  **evaluate_period(temps, humids, 18, 24)}
+    ]
+
 # ── Prediction Route ──────────────────────────────────────────────────────────
 
 @app.route('/api/predict', methods=['GET', 'POST'])
@@ -338,7 +584,7 @@ def predict_heatwave():
         weather_url = (f"https://api.open-meteo.com/v1/forecast"
                        f"?latitude={lat}&longitude={lng}"
                        f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m"
-                       f"&hourly=uv_index&timezone=auto")
+                       f"&hourly=uv_index,temperature_2m,relative_humidity_2m&timezone=auto")
 
         # Retry once on failure (handles Render's cold-start network delays)
         res = None
@@ -369,6 +615,12 @@ def predict_heatwave():
         transit            = get_nearby_transit(lat, lng)
         location_name      = get_reverse_geocode(lat, lng) if not query else query
 
+        forecast_trend  = build_forecast_trend(lat, lng)
+        xai_explanation = generate_xai_explanation(temp, round(humidity, 1), round(uv_index, 1), heat_index, severity)
+        
+        dynamic_recs = generate_dynamic_recommendations(temp, uv_index, heat_index)
+        daily_plan = generate_daily_plan(weather_data.get('hourly', {}))
+
         return jsonify({
             "status":     "success",
             "location":   {"lat": lat, "lng": lng},
@@ -379,7 +631,10 @@ def predict_heatwave():
                 "heat_index":  heat_index,
                 "uv_index":    round(uv_index, 1)
             },
-            "prediction": {"risk_level": severity, "safety_guidelines": guidelines},
+            "prediction":     {"risk_level": severity, "safety_guidelines": guidelines},
+            "forecast_trend": forecast_trend,
+            "xai_explanation": xai_explanation,
+            "safety_engine":  {"recommendations": dynamic_recs, "daily_plan": daily_plan},
             "hospitals":  hospitals,
             "transit":    transit
         })
@@ -390,6 +645,105 @@ def predict_heatwave():
 
 
 SEVERE_LEVELS = {"moderate cold", "high cold", "extreme cold", "moderate", "high", "extreme"}
+
+
+# ── Chart Data Endpoint ───────────────────────────────────────────────────────
+
+@app.route('/api/chart-data', methods=['POST'])
+def chart_data():
+    try:
+        data = request.get_json()
+        lat  = float(data.get('lat'))
+        lng  = float(data.get('lng'))
+
+        from datetime import datetime, timedelta
+        today     = datetime.utcnow().date()
+        yesterday = today - timedelta(days=1)
+        lastweek  = today - timedelta(days=7)
+
+        def fetch_day(date_str):
+            url = (
+                f"https://archive-api.open-meteo.com/v1/archive"
+                f"?latitude={lat}&longitude={lng}"
+                f"&start_date={date_str}&end_date={date_str}"
+                f"&hourly=temperature_2m,relative_humidity_2m"
+                f"&timezone=auto"
+            )
+            r = requests.get(url, timeout=15)
+            if r.status_code != 200:
+                return [], []
+            h = r.json().get('hourly', {})
+            temps  = h.get('temperature_2m', [])
+            humids = h.get('relative_humidity_2m', [])
+            return temps, humids
+
+        # Today's full 24-hour forecast (already fetched in predict, but re-fetch here for granularity)
+        today_url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lng}"
+            f"&hourly=temperature_2m,relative_humidity_2m"
+            f"&forecast_days=1&timezone=auto"
+        )
+        today_res = requests.get(today_url, timeout=15)
+        today_temps, today_humids = [], []
+        if today_res.status_code == 200:
+            h = today_res.json().get('hourly', {})
+            today_temps  = h.get('temperature_2m', [])[:24]
+            today_humids = h.get('relative_humidity_2m', [])[:24]
+
+        today_hi = [round(calculate_heat_index(t, rh), 1) for t, rh in zip(today_temps, today_humids)]
+
+        yest_temps,  yest_humids  = fetch_day(str(yesterday))
+        week_temps,  week_humids  = fetch_day(str(lastweek))
+
+        # Daily averages for bar comparison (avg of each day's 24h)
+        def day_avg(temps):
+            return round(sum(temps)/len(temps), 1) if temps else None
+
+        hours = [f"{i:02d}:00" for i in range(24)]
+
+        return jsonify({
+            "status": "success",
+            "hours":  hours,
+            "today": {
+                "temps":      today_temps,
+                "heat_index": today_hi,
+                "avg_temp":   day_avg(today_temps)
+            },
+            "yesterday": {
+                "temps":    yest_temps[:24],
+                "avg_temp": day_avg(yest_temps)
+            },
+            "lastweek": {
+                "temps":    week_temps[:24],
+                "avg_temp": day_avg(week_temps)
+            },
+            "dates": {
+                "today":     str(today),
+                "yesterday": str(yesterday),
+                "lastweek":  str(lastweek)
+            }
+        })
+    except Exception as e:
+        print(f"[chart_data error] {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Personal Risk Endpoint ────────────────────────────────────────────────────
+
+@app.route('/api/personal-risk', methods=['POST'])
+def personal_risk():
+    try:
+        data       = request.get_json()
+        base_level = data.get('base_level', 'Low')
+        age        = data.get('age', 30)
+        occupation = data.get('occupation', '')
+        conditions = data.get('conditions', [])
+        result     = calculate_personal_risk(base_level, age, occupation, conditions)
+        return jsonify({"status": "success", **result})
+    except Exception as e:
+        print(f"[personal_risk error] {e}")
+        return jsonify({"error": str(e)}), 500
 
 def send_alert_email(email, username, risk_level, guidelines, temp, heat_index, hospitals, transit):
     import smtplib
