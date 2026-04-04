@@ -129,11 +129,20 @@
                 </div>
             </div>
 
-            <!-- ── Loader ────────────────────────── -->
-            <div id="loader" class="hidden flex flex-col items-center justify-center py-24">
-                <div class="loader-ring mb-6"></div>
-                <p class="uppercase tracking-[0.2em] text-sm text-luxury-gold font-light">Acquiring Telemetry Data...</p>
-                <p class="text-gray-600 text-xs mt-2 tracking-widest">Calibrating environmental sensors</p>
+            <!-- ── Loader (Shimmer skeleton) ──────────────────── -->
+            <div id="loader" class="hidden">
+                <!-- Alert banner shimmer -->
+                <div class="shimmer-box h-28 mb-14 rounded-lg"></div>
+                <!-- Metric cards shimmer -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-14">
+                    <div class="shimmer-box h-36 rounded-lg"></div>
+                    <div class="shimmer-box h-36 rounded-lg"></div>
+                    <div class="shimmer-box h-36 rounded-lg"></div>
+                    <div class="shimmer-box h-36 rounded-lg"></div>
+                </div>
+                <!-- Section shimmer -->
+                <div class="shimmer-box h-48 rounded-lg mb-8"></div>
+                <div class="shimmer-box h-40 rounded-lg"></div>
             </div>
 
             <!-- ── Dashboard ─────────────────────── -->
@@ -189,6 +198,30 @@
                         </p>
                     </div>
 
+                </div>
+
+                <!-- Risk Level Legend -->
+                <div class="risk-legend mb-10">
+                    <span class="legend-label">Risk Scale:</span>
+                    <div class="legend-item" style="--leg-color:#22c55e">
+                        <span class="legend-dot" style="background:#22c55e"></span>Low
+                    </div>
+                    <div class="legend-sep"></div>
+                    <div class="legend-item" style="--leg-color:#eab308">
+                        <span class="legend-dot" style="background:#eab308"></span>Moderate
+                    </div>
+                    <div class="legend-sep"></div>
+                    <div class="legend-item" style="--leg-color:#f97316">
+                        <span class="legend-dot" style="background:#f97316"></span>High
+                    </div>
+                    <div class="legend-sep"></div>
+                    <div class="legend-item" style="--leg-color:#ef4444">
+                        <span class="legend-dot" style="background:#ef4444"></span>Extreme
+                    </div>
+                    <div class="legend-sep"></div>
+                    <div class="legend-item" style="--leg-color:#60a5fa">
+                        <span class="legend-dot" style="background:#60a5fa"></span>Cold
+                    </div>
                 </div>
 
                 <!-- Divider -->
@@ -522,6 +555,44 @@
         </footer>
 
 
+    </div>
+
+    <!-- ── Chatbot Assistant ──────────────────────────── -->
+    <div id="chatbotWidget" class="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+        <!-- Chat Panel -->
+        <div id="chatPanel" class="hidden mb-4 w-80 bg-black/80 backdrop-blur-xl border border-dusk-500/30 rounded-xl overflow-hidden shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex flex-col">
+            <div class="bg-dusk-900/60 p-4 border-b border-dusk-500/20 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-dusk-400/20 flex items-center justify-center border border-dusk-400/40 text-dusk-400">
+                        <i class="fa-solid fa-robot"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-white text-sm font-semibold font-serif uppercase tracking-widest">HeatGuard AI</h4>
+                        <p class="text-[10px] text-green-400 font-mono">● Online</p>
+                    </div>
+                </div>
+                <button id="closeChatBtn" class="text-gray-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div id="chatMessages" class="p-4 h-64 overflow-y-auto flex flex-col gap-3 scrollbar-hide">
+                <div class="chat-bubble bot">
+                    Hello! I'm HeatGuard AI. How can I help you stay safe today? Try asking: "Is it safe to go outside?" or "What should I do in 42°C?"
+                </div>
+            </div>
+            
+            <div class="p-3 border-t border-dusk-500/20 bg-black/40 flex items-center gap-2">
+                <input type="text" id="chatInput" placeholder="Ask a question..." class="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-dusk-400/50 placeholder-gray-500">
+                <button id="sendMessageBtn" class="w-9 h-9 rounded-full bg-dusk-500 hover:bg-dusk-400 text-white flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-paper-plane text-xs"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Float Button -->
+        <button id="chatbotToggleBtn" class="w-14 h-14 rounded-full bg-gradient-to-tr from-dusk-900 to-dusk-600 border border-dusk-400/50 shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)] hover:scale-105 transition-all flex items-center justify-center text-white text-xl relative group">
+            <span class="absolute inset-0 rounded-full bg-dusk-400 animate-ping opacity-20 group-hover:opacity-40"></span>
+            <i class="fa-solid fa-comment-dots z-10"></i>
+        </button>
     </div>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>

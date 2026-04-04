@@ -217,11 +217,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateDashboard(data, label) {
         const { weather, prediction, location_name } = data;
 
-        // Metrics
-        tempVal.innerText      = weather.temperature;
-        humidityVal.innerText  = weather.humidity;
-        uvVal.innerText        = weather.uv_index;
-        heatIndexVal.innerText = weather.heat_index;
+        // Metrics with Pulse Animation
+        const triggerPulse = (el, val) => {
+            el.innerText = val;
+            el.classList.remove('value-update-anim');
+            void el.offsetWidth; // trigger reflow
+            el.classList.add('value-update-anim');
+        };
+        
+        triggerPulse(tempVal, weather.temperature);
+        triggerPulse(humidityVal, weather.humidity);
+        triggerPulse(uvVal, weather.uv_index);
+        triggerPulse(heatIndexVal, weather.heat_index);
 
         // Risk
         riskLevelOutput.innerText        = prediction.risk_level;
@@ -1012,6 +1019,99 @@ document.addEventListener('DOMContentLoaded', () => {
             alertToast.classList.remove('translate-x-0');
             alertToast.classList.add('translate-x-[120%]');
         }, 5000);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // CHATBOT ASSISTANT
+    // ════════════════════════════════════════════════════════════════════
+    
+    const chatbotToggleBtn = document.getElementById('chatbotToggleBtn');
+    const closeChatBtn = document.getElementById('closeChatBtn');
+    const chatPanel = document.getElementById('chatPanel');
+    const chatInput = document.getElementById('chatInput');
+    const sendMessageBtn = document.getElementById('sendMessageBtn');
+    const chatMessages = document.getElementById('chatMessages');
+
+    if (chatbotToggleBtn && chatPanel) {
+        chatbotToggleBtn.addEventListener('click', () => {
+            chatPanel.classList.toggle('hidden');
+            if (!chatPanel.classList.contains('hidden')) {
+                chatInput.focus();
+            }
+        });
+
+        closeChatBtn.addEventListener('click', () => {
+            chatPanel.classList.add('hidden');
+        });
+
+        const appendMessage = (text, sender) => {
+            const div = document.createElement('div');
+            div.className = `chat-bubble ${sender}`;
+            div.innerText = text;
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        };
+
+        const processChatbotInput = () => {
+            const val = chatInput.value.trim();
+            if(!val) return;
+            
+            appendMessage(val, 'user');
+            chatInput.value = '';
+            
+            // Artificial delay for realism
+            setTimeout(() => {
+                const response = generateChatbotResponse(val);
+                appendMessage(response, 'bot');
+            }, 600);
+        };
+
+        sendMessageBtn.addEventListener('click', processChatbotInput);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') processChatbotInput();
+        });
+
+        // Simple Rule-Based NLP Logic
+        function generateChatbotResponse(msg) {
+            const lowerMsg = msg.toLowerCase();
+            const temp = window._lastWeather?.temperature || null;
+            const risk = window._lastRisk?.toLowerCase() || 'unknown';
+
+            // Custom Temperature Rule (e.g. "What should I do in 42C?")
+            const tempMatch = lowerMsg.match(/(\d{2,3})\s*(?:c|degrees)?/);
+            if (tempMatch && lowerMsg.includes('what')) {
+                const degrees = parseInt(tempMatch[1]);
+                if (degrees > 38) return `At ${degrees}°C, you are at extreme risk of heat stroke. Stay indoors, seek air conditioning immediately, avoid exertion, and hydrate continuously.`;
+                if (degrees > 32) return `At ${degrees}°C, take caution. Limit outdoor activities to early morning, wear UPF-rated clothing, and drink plenty of fluids.`;
+                if (degrees < 5) return `At ${degrees}°C, you are facing severe cold exposure. Dress in heavy layers immediately, guard extremities, and stay indoors if possible.`;
+                return `At ${degrees}°C, conditions are relatively stable. Just exercise common sense and stay hydrated.`;
+            }
+
+            // General "Safe to go outside" Rule
+            if (lowerMsg.includes('safe') || lowerMsg.includes('outside')) {
+                if (!temp) return "Please search for a location or use GPS first so I can analyze the current conditions.";
+                if (risk.includes('extreme') || risk.includes('high')) {
+                    if (risk.includes('cold')) return "No, it is highly inadvisable to go outside. There is a high risk of frostbite or hypothermia.";
+                    return `No, it is not safe. The current risk level is ${risk} (${temp}°C). Outdoor exposure should be strictly limited to emergencies.`;
+                }
+                if (risk === 'moderate') {
+                    return `It's acceptable, but the risk is Moderate (${temp}°C). Take precautions: wear a hat, use sunscreen, and limit exertion.`;
+                }
+                return `Yes, it is entirely safe! The current conditions are calm (${temp}°C). Enjoy your time outdoors.`;
+            }
+
+            // Keywords
+            if (lowerMsg.includes('hello') || lowerMsg.includes('hi ')) return 'Greetings! I am the HeatGuard AI. Ask me if it is safe outside, or what precautions to take for certain temperatures.';
+            if (lowerMsg.includes('water') || lowerMsg.includes('hydrate')) return 'Hydration is critical. Avoid caffeine or alcohol during high heat events, and consume water proactively.';
+            if (lowerMsg.includes('uv') || lowerMsg.includes('sun')) return 'If the UV index is higher than 3, you should wear SPF 30+ sunscreen, sunglasses, and protective clothing.';
+            if (lowerMsg.includes('cold') || lowerMsg.includes('freeze')) return 'In extreme cold, frostbite can occur in minutes. Wrap all exposed skin, wear insulated boots, and stay dry.';
+
+            // Fallback
+            if (temp) {
+                return `Currently, your location is at ${temp}°C with a ${risk} risk profile. Ask me specific questions like "Is it safe to go outside?"`;
+            }
+            return "I am an atmospheric safety AI. Let me know what location you are analyzing and I can provide tailored safety advice.";
+        }
     }
 
 });
