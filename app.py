@@ -16,6 +16,8 @@ app = Flask(__name__)
 app.secret_key = 'super_secret_luxury_heatwave_key_2026'
 CORS(app)
 
+COMMON_HEADERS = {"User-Agent": "HeatwaveGuard/1.0 (support@heatwaveguard.com)"}
+
 # ── SQLite Database ───────────────────────────────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(__file__), 'users.db')
 
@@ -210,7 +212,7 @@ def get_nearby_hospitals(lat, lng):
         out body 3;
         """
         response = requests.post("https://overpass-api.de/api/interpreter",
-                                 data={'data': query}, timeout=10)
+                                 data={'data': query}, timeout=10, headers=COMMON_HEADERS)
         if response.status_code == 200:
             hospitals = []
             for el in response.json().get('elements', []):
@@ -236,7 +238,7 @@ def get_nearby_transit(lat, lng):
         out center 15;
         """
         response = requests.post("https://overpass-api.de/api/interpreter",
-                                 data={'data': query}, timeout=10)
+                                 data={'data': query}, timeout=10, headers=COMMON_HEADERS)
         if response.status_code == 200:
             transit = []
             for el in response.json().get('elements', []):
@@ -261,7 +263,7 @@ def get_reverse_geocode(lat, lng):
     """Fetch city/region name from coordinates using BigDataCloud API."""
     try:
         url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat}&longitude={lng}&localityLanguage=en"
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=5, headers=COMMON_HEADERS)
         if response.status_code == 200:
             data = response.json()
             city    = data.get('city') or data.get('locality') or data.get('principalSubdivision')
@@ -319,7 +321,7 @@ def build_forecast_trend(lat, lng):
             f"&hourly=temperature_2m,relative_humidity_2m,uv_index,apparent_temperature"
             f"&forecast_days=3&timezone=auto"
         )
-        res = requests.get(url, timeout=15)
+        res = requests.get(url, timeout=15, headers=COMMON_HEADERS)
         if res.status_code != 200:
             return []
         hourly = res.json().get('hourly', {})
@@ -562,7 +564,7 @@ def predict_heatwave():
         if query:
             geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={query}&count=1&language=en&format=json"
             try:
-                geo_res = requests.get(geo_url, timeout=10)
+                geo_res = requests.get(geo_url, timeout=10, headers=COMMON_HEADERS)
             except requests.exceptions.RequestException as e:
                 return jsonify({"error": f"Geocoding service unreachable: {str(e)}"}), 502
             if geo_res.status_code == 200:
@@ -590,7 +592,7 @@ def predict_heatwave():
         res = None
         for attempt in range(2):
             try:
-                res = requests.get(weather_url, timeout=15)
+                res = requests.get(weather_url, timeout=15, headers=COMMON_HEADERS)
                 if res.status_code == 200:
                     break
             except requests.exceptions.RequestException:
@@ -669,7 +671,7 @@ def chart_data():
                 f"&hourly=temperature_2m,relative_humidity_2m"
                 f"&timezone=auto"
             )
-            r = requests.get(url, timeout=15)
+            r = requests.get(url, timeout=15, headers=COMMON_HEADERS)
             if r.status_code != 200:
                 return [], []
             h = r.json().get('hourly', {})
@@ -684,7 +686,7 @@ def chart_data():
             f"&hourly=temperature_2m,relative_humidity_2m"
             f"&forecast_days=1&timezone=auto"
         )
-        today_res = requests.get(today_url, timeout=15)
+        today_res = requests.get(today_url, timeout=15, headers=COMMON_HEADERS)
         today_temps, today_humids = [], []
         if today_res.status_code == 200:
             h = today_res.json().get('hourly', {})
