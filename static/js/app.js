@@ -193,21 +193,52 @@ document.addEventListener('DOMContentLoaded', () => {
     async function runTextSearch(query) {
         showLoader();
         try {
-            const res  = await fetch('/api/predict', {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ query })
-            });
-            const data = await res.json();
-            if (data.status === 'success') {
-                updateDashboard(data, query);
+            // Priority: Use client-side geocoding to avoid server-side rate limits on Render
+            const geoRes = await fetch(
+                `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`
+            );
+            const geoData = await geoRes.json();
+            
+            if (geoData.results && geoData.results.length > 0) {
+                const item = geoData.results[0];
+                const parts  = [item.admin1, item.country].filter(Boolean);
+                const label  = parts.join(', ') ? `${item.name}, ${parts.join(', ')}` : item.name;
+                analyzeCoords(item.latitude, item.longitude, label);
             } else {
-                alert(`Error: ${data.error}`);
-                hideLoader();
+                // Fallback to server search only if client-side fails
+                const res = await fetch('/api/predict', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ query })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    updateDashboard(data, query);
+                } else {
+                    alert(`Error: ${data.error}`);
+                    hideLoader();
+                }
             }
         } catch (err) {
-            alert('Network error. Unable to reach the telemetry server.');
-            hideLoader();
+            console.error('Client-side search failed, falling back to server:', err);
+            // Absolute last resort: server search
+            try {
+                const res = await fetch('/api/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    updateDashboard(data, query);
+                } else {
+                    alert('Location not found or service unavailable.');
+                    hideLoader();
+                }
+            } catch (e) {
+                alert('Network error. Unable to reach the telemetry server.');
+                hideLoader();
+            }
         }
     }
 
@@ -743,10 +774,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (chartHeatIdxInst) { chartHeatIdxInst.destroy(); chartHeatIdxInst = null; }
         if (chartHistoryInst) { chartHistoryInst.destroy(); chartHistoryInst = null; }
 
+        const localDate = new Date().toISOString().split('T')[0];
         // Fetch today's data and render default charts
         fetch('/api/chart-data', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lat: window._lastLat, lng: window._lastLng })
+            body: JSON.stringify({ 
+                lat: window._lastLat, 
+                lng: window._lastLng,
+                local_date: localDate 
+            })
         })
         .then(r => r.json())
         .then(d => {
