@@ -1,0 +1,14 @@
+# Environment variables — NEVER commit secrets to git
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Database
+users.db
+users.xlsx
+
+# IDE
+.claude/
