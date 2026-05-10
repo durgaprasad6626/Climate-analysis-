@@ -667,8 +667,22 @@ def predict_heatwave():
         lat = float(lat)
         lng = float(lng)
 
-        # High-accuracy unified fetcher (+/- 0.5 margin)
-        weather_data = fetch_weather_unified(lat, lng)
+        import concurrent.futures
+
+        # Run external API calls concurrently to reduce response time
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_weather = executor.submit(fetch_weather_unified, lat, lng)
+            future_hospitals = executor.submit(get_nearby_hospitals, lat, lng)
+            future_transit = executor.submit(get_nearby_transit, lat, lng)
+            future_location = executor.submit(get_reverse_geocode, lat, lng) if not query else None
+            future_forecast = executor.submit(build_forecast_trend, lat, lng)
+
+            weather_data = future_weather.result()
+            hospitals = future_hospitals.result()
+            transit = future_transit.result()
+            location_name = future_location.result() if future_location else query
+            forecast_trend = future_forecast.result()
+
         current_weather = weather_data.get('current', {})
         
         temp            = current_weather.get('temperature_2m', 0)
@@ -679,11 +693,7 @@ def predict_heatwave():
 
         heat_index         = calculate_heat_index(temp, humidity)
         severity, guidelines = determine_severity_level(heat_index, temp=temp)
-        hospitals          = get_nearby_hospitals(lat, lng)
-        transit            = get_nearby_transit(lat, lng)
-        location_name      = get_reverse_geocode(lat, lng) if not query else query
 
-        forecast_trend  = build_forecast_trend(lat, lng)
         xai_explanation = generate_xai_explanation(temp, round(humidity, 1), round(uv_index, 1), heat_index, severity)
         
         dynamic_recs = generate_dynamic_recommendations(temp, uv_index, heat_index)
