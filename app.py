@@ -235,7 +235,7 @@ def fetch_met_no(lat, lng):
 def fetch_open_meteo(url):
     """Fetch from Open-Meteo with best_match localized models."""
     try:
-        res = requests.get(url, timeout=10, headers=COMMON_HEADERS)
+        res = requests.get(url, timeout=15, headers=COMMON_HEADERS)
         if res.status_code == 200:
             data = res.json()
             data["source"] = "Open-Meteo (" + data.get('generationtime_ms', 0).__str__() + "ms)"
@@ -284,9 +284,33 @@ def fetch_weather_unified(lat, lng):
 
     # Ensure uv_index is present (pulled primarily from Open-Meteo)
     if om_data and 'hourly' in om_data:
-        unified_data['hourly']['uv_index'] = om_data['hourly'].get('uv_index', [])
+        uv_list = om_data['hourly'].get('uv_index', [])
+        if uv_list:  # only overwrite if we actually got data
+            if 'hourly' not in unified_data:
+                unified_data['hourly'] = {}
+            unified_data['hourly']['uv_index'] = uv_list
         unified_data['hourly_om'] = om_data['hourly']
-    
+    else:
+        # om_data failed (common on Render due to timeout) — fire a lightweight UV-only request
+        print("[UV Fallback] om_data missing, attempting dedicated UV fetch...")
+        try:
+            uv_only_url = (
+                f"https://api.open-meteo.com/v1/forecast"
+                f"?latitude={lat}&longitude={lng}"
+                f"&hourly=uv_index&forecast_days=1&timezone=auto"
+            )
+            uv_res = requests.get(uv_only_url, timeout=12, headers=COMMON_HEADERS)
+            if uv_res.status_code == 200:
+                uv_hourly = uv_res.json().get('hourly', {})
+                uv_list = uv_hourly.get('uv_index', [])
+                if uv_list:
+                    if 'hourly' not in unified_data:
+                        unified_data['hourly'] = {}
+                    unified_data['hourly']['uv_index'] = uv_list
+                    print(f"[UV Fallback] Got UV data: max={max(uv_list):.1f}")
+        except Exception as uv_err:
+            print(f"[UV Fallback Error] {uv_err}")
+
     return unified_data
 
 def get_nearby_hospitals(lat, lng):
@@ -702,8 +726,13 @@ def predict_heatwave():
         temp            = current_weather.get('temperature_2m', 0)
         humidity        = current_weather.get('relative_humidity_2m', 0)
         
-        uv_indices      = weather_data.get('hourly', {}).get('uv_index', [0])
-        uv_index        = max(uv_indices[:24]) if uv_indices else 0
+        # Try primary UV path, then hourly_om fallback, then default to 0
+        uv_indices = weather_data.get('hourly', {}).get('uv_index', [])
+        if not uv_indices:
+            # Fallback: check hourly_om (Open-Meteo hourly stored separately)
+            uv_indices = weather_data.get('hourly_om', {}).get('uv_index', [])
+        uv_index = round(max(uv_indices[:24]), 1) if uv_indices else 0
+        print(f"[UV Debug] uv_indices[:5]={uv_indices[:5]}, uv_index={uv_index}")
 
         heat_index         = calculate_heat_index(temp, humidity)
         severity, guidelines = determine_severity_level(heat_index, temp=temp)
