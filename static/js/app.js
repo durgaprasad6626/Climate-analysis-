@@ -665,7 +665,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const icons = {
-            'Morning':   'fa-sun-haze',
+            'Morning':   'fa-cloud-sun',
             'Afternoon': 'fa-sun',
             'Evening':   'fa-moon'
         };

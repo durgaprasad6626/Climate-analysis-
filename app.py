@@ -6,14 +6,17 @@ import os
 import random
 import time
 import threading
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── Config ───────────────────────────────────────────────────────────────────
 # Gmail SMTP — live email OTP
-SMTP_EMAIL        = "kamunisrishylam@gmail.com"
-SMTP_APP_PASSWORD = "krtpmcyskuskoljf"
+SMTP_EMAIL        = os.environ.get("SMTP_EMAIL", "")
+SMTP_APP_PASSWORD = os.environ.get("SMTP_APP_PASSWORD", "")
 
 app = Flask(__name__)
-app.secret_key = 'super_secret_luxury_heatwave_key_2026'
+app.secret_key = os.environ.get("SECRET_KEY", "fallback_secret_key")
 CORS(app)
 
 COMMON_HEADERS = {"User-Agent": "HeatwaveGuard/1.0 (support@heatwaveguard.com)"}
@@ -85,7 +88,7 @@ def verify_stored_otp(identifier, otp_input):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', google_maps_api_key=os.environ.get("GOOGLE_MAPS_API_KEY", ""))
 
 @app.route('/login')
 def login():
@@ -280,8 +283,9 @@ def fetch_weather_unified(lat, lng):
         print(f"[Station Observation Error] {e}")
 
     # Ensure uv_index is present (pulled primarily from Open-Meteo)
-    if om_data and 'hourly' in om_data and 'uv_index' in om_data['hourly']:
-        unified_data['hourly']['uv_index'] = om_data['hourly']['uv_index']
+    if om_data and 'hourly' in om_data:
+        unified_data['hourly']['uv_index'] = om_data['hourly'].get('uv_index', [])
+        unified_data['hourly_om'] = om_data['hourly']
     
     return unified_data
 
@@ -594,26 +598,34 @@ def generate_dynamic_recommendations(temp, uv, heat_index):
         recs.append({"type": "warning", "icon": "fa-temperature-arrow-up", "message": "High temps. Limit outdoor time and hydrate frequently."})
     elif temp < 0:
         recs.append({"type": "critical", "icon": "fa-icicles", "message": "Freezing conditions! Stay indoors and cover all exposed skin."})
+    elif temp < 10:
+        recs.append({"type": "info", "icon": "fa-temperature-arrow-down", "message": "Cold temps. Dress warmly if going outside."})
+    else:
+        recs.append({"type": "safe", "icon": "fa-temperature-half", "message": "Temperature is moderate and safe."})
     
     if uv >= 8:
         recs.append({"type": "warning", "icon": "fa-sun", "message": "High UV index. Wear SPF 50+ and UV-blocking sunglasses."})
     elif uv >= 5:
         recs.append({"type": "info", "icon": "fa-umbrella", "message": "Moderate UV. Sun protection recommended."})
+    else:
+        recs.append({"type": "safe", "icon": "fa-cloud", "message": "Low UV index. Minimal sun protection needed."})
 
     if heat_index > 41:
         recs.append({"type": "critical", "icon": "fa-droplet-slash", "message": "High risk of heat cramps and exhaustion."})
-    
-    if not recs:
-        recs.append({"type": "safe", "icon": "fa-shield-check", "message": "Conditions are safe. Maintain normal hydration."})
+    elif heat_index > 32:
+        recs.append({"type": "warning", "icon": "fa-bottle-water", "message": "Elevated heat index. Keep water nearby."})
+    else:
+        recs.append({"type": "safe", "icon": "fa-shield-check", "message": "Heat index is within normal comfortable levels."})
     
     return recs
 
 def generate_daily_plan(hourly_data):
-    if not hourly_data or 'temperature_2m' not in hourly_data:
+    om_hourly = hourly_data.get('hourly_om') or hourly_data
+    if not om_hourly or 'temperature_2m' not in om_hourly:
         return []
     
-    temps = hourly_data['temperature_2m'][:24]
-    humids = hourly_data.get('relative_humidity_2m', [50]*24)[:24]
+    temps = om_hourly['temperature_2m'][:24]
+    humids = om_hourly.get('relative_humidity_2m', [50]*24)[:24]
     
     if len(temps) < 24:
         return []
@@ -621,6 +633,8 @@ def generate_daily_plan(hourly_data):
     def evaluate_period(t_list, h_list, start_idx, end_idx):
         win_t = t_list[start_idx:end_idx]
         win_h = h_list[start_idx:end_idx]
+        if not win_t:
+            return {"avg_temp": 0, "risk_level": "Low"}
         avg_t = sum(win_t) / len(win_t)
         avg_h = sum(win_h) / len(win_h)
         hi = calculate_heat_index(avg_t, avg_h)
