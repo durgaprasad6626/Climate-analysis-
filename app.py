@@ -253,7 +253,7 @@ def fetch_weather_unified(lat, lng):
     om_forecast_url = (f"https://api.open-meteo.com/v1/forecast"
                        f"?latitude={lat}&longitude={lng}"
                        f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m"
-                       f"&hourly=uv_index,temperature_2m,relative_humidity_2m&timezone=auto&models=best_match")
+                       f"&hourly=uv_index,temperature_2m,relative_humidity_2m&timezone=auto")
     om_data = fetch_open_meteo(om_forecast_url)
 
     if not unified_data:
@@ -372,21 +372,38 @@ def get_nearby_transit(lat, lng):
         return []
 
 def get_reverse_geocode(lat, lng):
-    """Fetch city/region name from coordinates using BigDataCloud API."""
+    """Fetch city/region name from coordinates using OSM Nominatim, fallback to BigDataCloud."""
     try:
-        url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat}&longitude={lng}&localityLanguage=en"
-        response = requests.get(url, timeout=5, headers=COMMON_HEADERS)
-        if response.status_code == 200:
-            data = response.json()
+        # Primary: OpenStreetMap Nominatim
+        osm_url = f"https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lng}"
+        osm_res = requests.get(osm_url, timeout=5, headers=COMMON_HEADERS)
+        if osm_res.status_code == 200:
+            data = osm_res.json()
+            addr = data.get('address', {})
+            city = addr.get('city') or addr.get('town') or addr.get('village') or addr.get('suburb') or addr.get('county')
+            country = addr.get('country')
+            if city and country:
+                return f"{city}, {country}"
+            if city or country:
+                return city or country
+    except Exception as e:
+        print(f"OSM Reverse geocode error: {e}")
+
+    try:
+        # Fallback: BigDataCloud
+        bdc_url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat}&longitude={lng}&localityLanguage=en"
+        bdc_res = requests.get(bdc_url, timeout=5, headers=COMMON_HEADERS)
+        if bdc_res.status_code == 200:
+            data = bdc_res.json()
             city    = data.get('city') or data.get('locality') or data.get('principalSubdivision')
             country = data.get('countryName')
             if city and country:
                 return f"{city}, {country}"
             return city or country or "Unknown Location"
-        return "Unknown Location"
     except Exception as e:
-        print(f"Reverse geocode error: {e}")
-        return "Unknown Location"
+        print(f"BigDataCloud Reverse geocode error: {e}")
+        
+    return "Unknown Location"
 
 def calculate_heat_index(T, RH):
     T_F = T * 9.0 / 5.0 + 32.0
@@ -431,9 +448,11 @@ def build_forecast_trend(lat, lng):
             f"https://api.open-meteo.com/v1/forecast"
             f"?latitude={lat}&longitude={lng}"
             f"&hourly=temperature_2m,relative_humidity_2m,uv_index,apparent_temperature"
-            f"&forecast_days=3&timezone=auto&models=best_match"
+                f"&forecast_days=3&timezone=auto"
         )
         data = fetch_open_meteo(url)
+            if not data:
+                return []
         hourly = data.get('hourly', {})
         temps   = hourly.get('temperature_2m', [])
         humids  = hourly.get('relative_humidity_2m', [])
@@ -731,7 +750,10 @@ def predict_heatwave():
         if not uv_indices:
             # Fallback: check hourly_om (Open-Meteo hourly stored separately)
             uv_indices = weather_data.get('hourly_om', {}).get('uv_index', [])
-        uv_index = round(max(uv_indices[:24]), 1) if uv_indices else 0
+            
+        # Safely filter out any 'None' values from the API
+        valid_uvs = [uv for uv in uv_indices[:24] if uv is not None]
+        uv_index = round(max(valid_uvs), 1) if valid_uvs else 0
         print(f"[UV Debug] uv_indices[:5]={uv_indices[:5]}, uv_index={uv_index}")
 
         heat_index         = calculate_heat_index(temp, humidity)
