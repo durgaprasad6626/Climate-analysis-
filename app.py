@@ -252,7 +252,7 @@ def fetch_weather_unified(lat, lng):
     # 2. Try Open-Meteo (best_match models) if MET.no fails or for specialized fields
     om_forecast_url = (f"https://api.open-meteo.com/v1/forecast"
                        f"?latitude={lat}&longitude={lng}"
-                       f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m"
+                       f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m,uv_index"
                        f"&hourly=uv_index,temperature_2m,relative_humidity_2m&timezone=auto")
     om_data = fetch_open_meteo(om_forecast_url)
 
@@ -297,7 +297,7 @@ def fetch_weather_unified(lat, lng):
             uv_only_url = (
                 f"https://api.open-meteo.com/v1/forecast"
                 f"?latitude={lat}&longitude={lng}"
-                f"&hourly=uv_index&forecast_days=1&timezone=auto"
+                f"&hourly=uv_index&current=uv_index&forecast_days=1&timezone=auto"
             )
             uv_res = requests.get(uv_only_url, timeout=12, headers=COMMON_HEADERS)
             if uv_res.status_code == 200:
@@ -307,6 +307,12 @@ def fetch_weather_unified(lat, lng):
                     if 'hourly' not in unified_data:
                         unified_data['hourly'] = {}
                     unified_data['hourly']['uv_index'] = uv_list
+                    # Also update current if available
+                    curr_uv = uv_res.json().get('current', {}).get('uv_index')
+                    if curr_uv is not None:
+                        if 'current' not in unified_data:
+                            unified_data['current'] = {}
+                        unified_data['current']['uv_index'] = curr_uv
                     print(f"[UV Fallback] Got UV data: max={max(uv_list):.1f}")
         except Exception as uv_err:
             print(f"[UV Fallback Error] {uv_err}")
@@ -745,16 +751,18 @@ def predict_heatwave():
         temp            = current_weather.get('temperature_2m', 0)
         humidity        = current_weather.get('relative_humidity_2m', 0)
         
-        # Try primary UV path, then hourly_om fallback, then default to 0
-        uv_indices = weather_data.get('hourly', {}).get('uv_index', [])
-        if not uv_indices:
-            # Fallback: check hourly_om (Open-Meteo hourly stored separately)
-            uv_indices = weather_data.get('hourly_om', {}).get('uv_index', [])
+        # Priority: Try current UV from the API, then hourly max fallback
+        uv_index = current_weather.get('uv_index')
+        if uv_index is None:
+            uv_indices = weather_data.get('hourly', {}).get('uv_index', [])
+            if not uv_indices:
+                uv_indices = weather_data.get('hourly_om', {}).get('uv_index', [])
+            valid_uvs = [uv for uv in uv_indices[:24] if uv is not None]
+            uv_index = round(max(valid_uvs), 1) if valid_uvs else 0
+        else:
+            uv_index = round(float(uv_index), 1)
             
-        # Safely filter out any 'None' values from the API
-        valid_uvs = [uv for uv in uv_indices[:24] if uv is not None]
-        uv_index = round(max(valid_uvs), 1) if valid_uvs else 0
-        print(f"[UV Debug] uv_indices[:5]={uv_indices[:5]}, uv_index={uv_index}")
+        print(f"[UV Debug] uv_index={uv_index}")
 
         heat_index         = calculate_heat_index(temp, humidity)
         severity, guidelines = determine_severity_level(heat_index, temp=temp)
