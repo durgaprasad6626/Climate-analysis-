@@ -233,15 +233,28 @@ def fetch_met_no(lat, lng):
     return None
 
 def fetch_open_meteo(url):
-    """Fetch from Open-Meteo with best_match localized models."""
+    """Fetch from Open-Meteo with best_match localized models, with proxy fallback."""
     try:
-        res = requests.get(url, timeout=15, headers=COMMON_HEADERS)
+        res = requests.get(url, timeout=10, headers=COMMON_HEADERS)
         if res.status_code == 200:
             data = res.json()
-            data["source"] = "Open-Meteo (" + data.get('generationtime_ms', 0).__str__() + "ms)"
+            data["source"] = "Open-Meteo (" + str(data.get('generationtime_ms', 0)) + "ms)"
             return data
     except Exception as e:
         print(f"[Open-Meteo Error] {e}")
+        
+    print("[Open-Meteo Fallback] Direct fetch failed, trying proxy...")
+    import urllib.parse
+    try:
+        proxy_url = f"https://api.codetabs.com/v1/proxy?quest={urllib.parse.quote(url)}"
+        res = requests.get(proxy_url, timeout=12, headers=COMMON_HEADERS)
+        if res.status_code == 200:
+            data = res.json()
+            data["source"] = "Open-Meteo Proxy (" + str(data.get('generationtime_ms', 0)) + "ms)"
+            return data
+    except Exception as e:
+        print(f"[Open-Meteo Proxy Error] {e}")
+        
     return None
 
 def fetch_weather_unified(lat, lng):
@@ -299,7 +312,15 @@ def fetch_weather_unified(lat, lng):
                 f"?latitude={lat}&longitude={lng}"
                 f"&hourly=uv_index&forecast_days=1&timezone=auto"
             )
-            uv_res = requests.get(uv_only_url, timeout=12, headers=COMMON_HEADERS)
+            uv_res = requests.get(uv_only_url, timeout=10, headers=COMMON_HEADERS)
+            
+            # If direct fetch fails or is rate limited, try proxy
+            if uv_res.status_code != 200:
+                print("[UV Fallback] Direct fetch failed, trying proxy...")
+                import urllib.parse
+                proxy_url = f"https://api.codetabs.com/v1/proxy?quest={urllib.parse.quote(uv_only_url)}"
+                uv_res = requests.get(proxy_url, timeout=12, headers=COMMON_HEADERS)
+
             if uv_res.status_code == 200:
                 uv_hourly = uv_res.json().get('hourly', {})
                 uv_list = uv_hourly.get('uv_index', [])
@@ -704,8 +725,13 @@ def predict_heatwave():
             geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={query}&count=1&language=en&format=json"
             try:
                 geo_res = requests.get(geo_url, timeout=10, headers=COMMON_HEADERS)
+                if geo_res.status_code != 200:
+                    import urllib.parse
+                    proxy_url = f"https://api.codetabs.com/v1/proxy?quest={urllib.parse.quote(geo_url)}"
+                    geo_res = requests.get(proxy_url, timeout=12, headers=COMMON_HEADERS)
             except requests.exceptions.RequestException as e:
                 return jsonify({"error": f"Geocoding service unreachable: {str(e)}"}), 502
+            
             if geo_res.status_code == 200:
                 results = geo_res.json().get('results')
                 if results:
