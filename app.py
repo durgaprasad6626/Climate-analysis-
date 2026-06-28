@@ -246,7 +246,7 @@ def fetch_open_meteo(url):
     print("[Open-Meteo Fallback] Direct fetch failed, trying proxy...")
     import urllib.parse
     try:
-        proxy_url = f"https://api.codetabs.com/v1/proxy?quest={urllib.parse.quote(url)}"
+        proxy_url = f"https://corsproxy.io/?{urllib.parse.quote(url)}"
         res = requests.get(proxy_url, timeout=12, headers=COMMON_HEADERS)
         if res.status_code == 200:
             data = res.json()
@@ -318,7 +318,7 @@ def fetch_weather_unified(lat, lng):
             if uv_res.status_code != 200:
                 print("[UV Fallback] Direct fetch failed, trying proxy...")
                 import urllib.parse
-                proxy_url = f"https://api.codetabs.com/v1/proxy?quest={urllib.parse.quote(uv_only_url)}"
+                proxy_url = f"https://corsproxy.io/?{urllib.parse.quote(uv_only_url)}"
                 uv_res = requests.get(proxy_url, timeout=12, headers=COMMON_HEADERS)
 
             if uv_res.status_code == 200:
@@ -711,10 +711,10 @@ def generate_daily_plan(hourly_data):
         {"period": "Evening", "time": "18:00 - 23:59",  **evaluate_period(temps, humids, 18, 24)}
     ]
 
-# ── Prediction Route ──────────────────────────────────────────────────────────
+# ── Risk Analysis Route ───────────────────────────────────────────────────────
 
-@app.route('/api/predict', methods=['GET', 'POST'])
-def predict_heatwave():
+@app.route('/api/analyze', methods=['GET', 'POST'])
+def analyze_heatwave():
     try:
         data  = request.get_json() if request.is_json else request.args
         lat   = data.get('lat')
@@ -723,14 +723,20 @@ def predict_heatwave():
 
         if query:
             geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={query}&count=1&language=en&format=json"
+            geo_res = None
             try:
                 geo_res = requests.get(geo_url, timeout=10, headers=COMMON_HEADERS)
-                if geo_res.status_code != 200:
-                    import urllib.parse
-                    proxy_url = f"https://api.codetabs.com/v1/proxy?quest={urllib.parse.quote(geo_url)}"
-                    geo_res = requests.get(proxy_url, timeout=12, headers=COMMON_HEADERS)
             except requests.exceptions.RequestException as e:
-                return jsonify({"error": f"Geocoding service unreachable: {str(e)}"}), 502
+                print(f"[Geocoding Error] {e}")
+            
+            if geo_res is None or geo_res.status_code != 200:
+                print("[Geocoding Fallback] Direct fetch failed, trying proxy...")
+                import urllib.parse
+                proxy_url = f"https://corsproxy.io/?{urllib.parse.quote(geo_url)}"
+                try:
+                    geo_res = requests.get(proxy_url, timeout=12, headers=COMMON_HEADERS)
+                except requests.exceptions.RequestException as e:
+                    return jsonify({"error": f"Geocoding service unreachable: {str(e)}"}), 502
             
             if geo_res.status_code == 200:
                 results = geo_res.json().get('results')
@@ -800,7 +806,7 @@ def predict_heatwave():
                 "heat_index":  heat_index,
                 "uv_index":    round(uv_index, 1)
             },
-            "prediction":     {"risk_level": severity, "safety_guidelines": guidelines},
+            "analysis":       {"risk_level": severity, "safety_guidelines": guidelines},
             "forecast_trend": forecast_trend,
             "xai_explanation": xai_explanation,
             "safety_engine":  {"recommendations": dynamic_recs, "daily_plan": daily_plan},
@@ -809,7 +815,7 @@ def predict_heatwave():
         })
 
     except Exception as e:
-        print(f"[predict_heatwave error] {e}")
+        print(f"[analyze_heatwave error] {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -848,17 +854,23 @@ def chart_data():
                 f"&hourly=temperature_2m,relative_humidity_2m"
                 f"&timezone=auto"
             )
-            data = fetch_open_meteo(url)
-            h = data.get('hourly', {})
-            temps  = h.get('temperature_2m', [])
-            humids = h.get('relative_humidity_2m', [])
-            return temps, humids
+            try:
+                data = fetch_open_meteo(url)
+                if data:
+                    h = data.get('hourly', {})
+                    temps  = h.get('temperature_2m', [])
+                    humids = h.get('relative_humidity_2m', [])
+                    return temps, humids
+            except Exception as e:
+                print(f"[fetch_day Error] {e}")
+            return [], []
 
         # Use unified fetcher for today's data to ensure consistency with the hero metrics
         unified_today = fetch_weather_unified(lat, lng)
         today_temps  = unified_today.get('hourly', {}).get('temperature_2m', [])[:24]
         today_humids = unified_today.get('hourly', {}).get('relative_humidity_2m', [])[:24]
-        
+        today_uvs    = unified_today.get('hourly', {}).get('uv_index', [])[:24]
+
         # Determine current hour in HIS (Location local time)
         # If the weather API returned a current time, use its hour.
         current_hour = None
@@ -895,6 +907,8 @@ def chart_data():
             "today": {
                 "temps":      today_temps,
                 "heat_index": today_hi,
+                "humidity":   today_humids,
+                "uv_index":   [round(v, 1) if v is not None else 0 for v in today_uvs],
                 "avg_temp":   day_avg(today_temps)
             },
             "yesterday": {
@@ -914,6 +928,90 @@ def chart_data():
     except Exception as e:
         print(f"[chart_data error] {e}")
         return jsonify({"error": str(e)}), 500
+
+
+def classify_aqi(aqi_value):
+    """Classify US AQI value into category, color, and guidance."""
+    if aqi_value is None:
+        return {"category": "Unknown", "color": "#6b7280", "tag": "N/A", "advice": "AQI data unavailable."}
+    v = int(aqi_value)
+    if v <= 50:
+        return {"category": "Good", "color": "#22c55e", "tag": "GOOD",
+                "advice": "Air quality is satisfactory. No risk for outdoor activity."}
+    elif v <= 100:
+        return {"category": "Moderate", "color": "#eab308", "tag": "MOD",
+                "advice": "Acceptable air quality. Unusually sensitive people should limit prolonged outdoor exertion."}
+    elif v <= 150:
+        return {"category": "Unhealthy for Sensitive Groups", "color": "#f97316", "tag": "USG",
+                "advice": "Sensitive groups may be affected. Limit outdoor activity."}
+    elif v <= 200:
+        return {"category": "Unhealthy", "color": "#ef4444", "tag": "BAD",
+                "advice": "Everyone may experience health effects. Reduce outdoor exertion."}
+    elif v <= 300:
+        return {"category": "Very Unhealthy", "color": "#a855f7", "tag": "VERY",
+                "advice": "Health alert! Everyone should avoid prolonged outdoor exertion."}
+    else:
+        return {"category": "Hazardous", "color": "#7f1d1d", "tag": "HAZ",
+                "advice": "Emergency conditions. Avoid all outdoor activity."}
+
+
+@app.route('/api/aqi', methods=['POST'])
+def get_aqi():
+    try:
+        data = request.get_json()
+        lat  = float(data.get('lat'))
+        lng  = float(data.get('lng'))
+        url = (
+            f"https://air-quality-api.open-meteo.com/v1/air-quality"
+            f"?latitude={lat}&longitude={lng}"
+            f"&current=us_aqi,european_aqi,pm2_5,pm10,nitrogen_dioxide,ozone,carbon_monoxide"
+            f"&hourly=us_aqi,pm2_5,pm10"
+            f"&forecast_days=1&timezone=auto"
+        )
+        try:
+            res = requests.get(url, timeout=10, headers=COMMON_HEADERS)
+            if res.status_code != 200:
+                raise Exception(f"AQI API status {res.status_code}")
+            aq = res.json()
+        except Exception as e:
+            print(f"[AQI Error] {e}")
+            return jsonify({"error": "Air quality data unavailable.", "status": "error"}), 503
+        current  = aq.get('current', {})
+        hourly   = aq.get('hourly', {})
+        us_aqi   = current.get('us_aqi')
+        eu_aqi   = current.get('european_aqi')
+        pm25     = current.get('pm2_5')
+        pm10_val = current.get('pm10')
+        no2      = current.get('nitrogen_dioxide')
+        ozone    = current.get('ozone')
+        co       = current.get('carbon_monoxide')
+        classification = classify_aqi(us_aqi)
+        hours    = [f"{i:02d}:00" for i in range(24)]
+        aqi_24h  = (hourly.get('us_aqi') or [])[:24]
+        pm25_24h = (hourly.get('pm2_5')  or [])[:24]
+        pm10_24h = (hourly.get('pm10')   or [])[:24]
+        return jsonify({
+            "status": "success",
+            "current": {
+                "us_aqi":           us_aqi,
+                "european_aqi":     eu_aqi,
+                "pm2_5":            round(pm25, 1)     if pm25     is not None else None,
+                "pm10":             round(pm10_val, 1) if pm10_val is not None else None,
+                "nitrogen_dioxide": round(no2, 1)      if no2      is not None else None,
+                "ozone":            round(ozone, 1)    if ozone    is not None else None,
+                "carbon_monoxide":  round(co, 1)       if co       is not None else None,
+            },
+            "classification": classification,
+            "trend": {
+                "hours":  hours,
+                "us_aqi": aqi_24h,
+                "pm2_5":  pm25_24h,
+                "pm10":   pm10_24h,
+            }
+        })
+    except Exception as e:
+        print(f"[get_aqi error] {e}")
+        return jsonify({"error": str(e), "status": "error"}), 500
 
 
 # ── Personal Risk Endpoint ────────────────────────────────────────────────────

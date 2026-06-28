@@ -119,15 +119,15 @@ Open your browser and navigate to **[http://127.0.0.1:5000](http://127.0.0.1:500
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/` | Main dashboard |
-| `POST` | `/api/predict` | Get weather data & risk level for a location |
+| `POST` | `/api/analyze` | Get weather data & risk level for a location |
 | `POST` | `/api/send-otp` | Send OTP to email (for auth flow) |
 | `POST` | `/api/verify-otp` | Verify OTP and log in / register |
 | `POST` | `/api/send-alert` | Trigger severe weather alert email |
 
-### Example `/api/predict` Request
+### Example `/api/analyze` Request
 
 ```json
-POST /api/predict
+POST /api/analyze
 {
   "lat": 17.3850,
   "lng": 78.4867
@@ -146,7 +146,7 @@ POST /api/predict
     "heat_index": 42.1,
     "uv_index": 9.5
   },
-  "prediction": {
+  "analysis": {
     "risk_level": "High",
     "safety_guidelines": "Dangerous conditions. Heat cramps and heat exhaustion are likely. Limit outdoor activities."
   },

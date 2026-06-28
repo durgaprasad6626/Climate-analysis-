@@ -77,11 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function showLoader() { dashboard.classList.add('hidden'); loader.classList.remove('hidden'); }
     function hideLoader() { loader.classList.add('hidden'); }
 
-    // ── Helper: call /api/predict with lat/lng ────────────────────────
+    // ── Helper: call /api/analyze with lat/lng ────────────────────────
     async function analyzeCoords(lat, lng, label) {
         showLoader();
         try {
-            const res = await fetch('/api/predict', {
+            const res = await fetch('/api/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ lat, lng })
@@ -211,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 analyzeCoords(item.latitude, item.longitude, label);
             } else {
                 // Fallback to server search only if client-side fails
-                const res = await fetch('/api/predict', {
+                const res = await fetch('/api/analyze', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query })
@@ -228,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Client-side search failed, falling back to server:', err);
             // Absolute last resort: server search
             try {
-                const res = await fetch('/api/predict', {
+                const res = await fetch('/api/analyze', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query })
@@ -251,7 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // DASHBOARD RENDERER
     // ════════════════════════════════════════════════════════════════════
     function updateDashboard(data, label) {
-        const { weather, prediction, location_name } = data;
+        const { weather, analysis, location_name } = data;
 
         // Metrics with Pulse Animation
         const triggerPulse = (el, val) => {
@@ -267,8 +267,8 @@ document.addEventListener('DOMContentLoaded', () => {
         triggerPulse(heatIndexVal, weather.heat_index);
 
         // Risk
-        riskLevelOutput.innerText = prediction.risk_level;
-        safetyGuidelinesOutput.innerText = prediction.safety_guidelines;
+        riskLevelOutput.innerText = analysis.risk_level;
+        safetyGuidelinesOutput.innerText = analysis.safety_guidelines;
 
         const finalLabel = location_name || label;
         if (locationLabel) locationLabel.innerText = finalLabel ? `📍 ${finalLabel}` : '';
@@ -284,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Alert banner styling
         alertIconWrapper.className = 'px-10 py-8 flex items-center justify-center transition-all duration-500 min-w-[120px] ';
-        const risk = prediction.risk_level.toLowerCase();
+        const risk = analysis.risk_level.toLowerCase();
         const riskMap = {
             'low': { wrap: 'bg-green-900/80 border-l-4 border-green-500', icon: 'fa-solid fa-shield-check text-4xl text-green-300 drop-shadow-lg', text: 'font-bold text-green-400' },
             'moderate': { wrap: 'bg-yellow-900/80 border-l-4 border-yellow-500', icon: 'fa-solid fa-triangle-exclamation text-4xl text-yellow-300 drop-shadow-lg', text: 'font-bold text-yellow-400' },
@@ -369,18 +369,18 @@ document.addEventListener('DOMContentLoaded', () => {
         window._lastLng = data.location.lng;
         window._lastLocationName = location_name || label;
         window._lastWeather = weather;
-        window._lastRisk = prediction.risk_level;
+        window._lastRisk = analysis.risk_level;
 
         initVizDashboard();
 
         // Store base risk level globally for personal risk form
-        window._baseRiskLevel = prediction.risk_level;
+        window._baseRiskLevel = analysis.risk_level;
 
         hideLoader();
         dashboard.classList.remove('hidden');
 
         // Send alert email if severity is non-Low
-        triggerAtmosphericAlert(data, prediction, weather);
+        triggerAtmosphericAlert(data, analysis, weather);
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -721,6 +721,17 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function buildLineOpts(label, lineColor, fillColor, yLabel) {
+        const zoomPlugin = {
+            zoom: {
+                wheel: { enabled: true },
+                pinch: { enabled: true },
+                mode: 'x',
+            },
+            pan: {
+                enabled: true,
+                mode: 'x',
+            }
+        };
         return {
             responsive: true,
             maintainAspectRatio: false,
@@ -734,7 +745,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     borderWidth: 1,
                     padding: 10,
                     callbacks: { label: ctx => `  ${ctx.parsed.y} ${yLabel}` }
-                }
+                },
+                zoom: zoomPlugin
             },
             scales: {
                 x: {
@@ -775,9 +787,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Destroy old chart instances
-        if (chartTempInst) { chartTempInst.destroy(); chartTempInst = null; }
+        if (chartTempInst)    { chartTempInst.destroy();    chartTempInst    = null; }
         if (chartHeatIdxInst) { chartHeatIdxInst.destroy(); chartHeatIdxInst = null; }
         if (chartHistoryInst) { chartHistoryInst.destroy(); chartHistoryInst = null; }
+        if (window.chartHumidityInst) { window.chartHumidityInst.destroy(); window.chartHumidityInst = null; }
+        if (window.chartUVInst)       { window.chartUVInst.destroy();       window.chartUVInst       = null; }
+        if (window.chartAQIInst)      { window.chartAQIInst.destroy();      window.chartAQIInst      = null; }
 
         const localDate = new Date().toISOString().split('T')[0];
         // Fetch today's data and render default charts
@@ -795,8 +810,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 window._chartData = d;
                 renderTempChart(d);
                 renderHeatIndexChart(d);
+                renderHumidityChart(d);
+                renderUVChart(d);
             })
             .catch(err => console.warn('Chart data fetch failed:', err));
+
+        // Also wire the lazy-load AQI tab
+        document.querySelectorAll('.viz-tab').forEach(tab => {
+            const orig = tab.onclick;
+            tab.addEventListener('click', () => {
+                if (tab.dataset.tab === 'aqitrend' && !window.chartAQIInst) {
+                    fetchAndRenderAQI();
+                }
+            });
+        });
+
+        // Fetch AQI card data in background
+        fetchAndRenderAQI();
     }
 
     function renderTempChart(d) {
@@ -849,6 +879,192 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             options: buildLineOpts('Heat Index', '#f97316', 'rgba(249,115,22,0.10)', '°C')
         });
+    }
+
+    function renderHumidityChart(d) {
+        const ctx = document.getElementById('chartHumidity');
+        if (!ctx) return;
+        if (window.chartHumidityInst) window.chartHumidityInst.destroy();
+        window.chartHumidityInst = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: d.hours,
+                datasets: [{
+                    label: 'Humidity (%)',
+                    data: d.today.humidity || [],
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56,189,248,0.10)',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: '#38bdf8',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: buildLineOpts('Humidity', '#38bdf8', 'rgba(56,189,248,0.10)', '%')
+        });
+    }
+
+    function renderUVChart(d) {
+        const ctx = document.getElementById('chartUV');
+        if (!ctx) return;
+        if (window.chartUVInst) window.chartUVInst.destroy();
+        window.chartUVInst = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: d.hours,
+                datasets: [{
+                    label: 'UV Index',
+                    data: d.today.uv_index || [],
+                    backgroundColor: d.today.uv_index
+                        ? d.today.uv_index.map(v =>
+                            v >= 11 ? 'rgba(239,68,68,0.80)' :
+                            v >= 8  ? 'rgba(249,115,22,0.75)' :
+                            v >= 6  ? 'rgba(234,179,8,0.70)'  :
+                            v >= 3  ? 'rgba(168,85,247,0.65)' :
+                                      'rgba(56,189,248,0.60)')
+                        : [],
+                    borderRadius: 3,
+                    borderSkipped: false,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(10,10,20,0.9)',
+                        titleColor: '#a855f7',
+                        bodyColor: '#e5e7eb',
+                        borderColor: 'rgba(139,92,246,0.3)',
+                        borderWidth: 1,
+                        padding: 10,
+                        callbacks: { label: ctx => `  UV ${ctx.parsed.y}` }
+                    },
+                    zoom: { zoom: { wheel: { enabled: true }, mode: 'x' }, pan: { enabled: true, mode: 'x' } }
+                },
+                scales: {
+                    x: { ticks: { color: CHART_DEFAULTS.tick, font: CHART_DEFAULTS.font, maxTicksLimit: 8 }, grid: { color: CHART_DEFAULTS.grid } },
+                    y: { min: 0, ticks: { color: CHART_DEFAULTS.tick, font: CHART_DEFAULTS.font }, grid: { color: CHART_DEFAULTS.grid } }
+                }
+            }
+        });
+    }
+
+    async function fetchAndRenderAQI() {
+        if (!window._lastLat || !window._lastLng) return;
+        try {
+            const res = await fetch('/api/aqi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lat: window._lastLat, lng: window._lastLng })
+            });
+            const d = await res.json();
+            if (d.status !== 'success') return;
+
+            const c  = d.current;
+            const cl = d.classification;
+
+            // Populate AQI section card
+            document.getElementById('aqiSection').classList.remove('hidden');
+            document.getElementById('aqiVal').innerText     = c.us_aqi ?? '--';
+            document.getElementById('aqiPm25').innerText    = c.pm2_5  ?? '--';
+            document.getElementById('aqiPm10').innerText    = c.pm10   ?? '--';
+            document.getElementById('aqiNo2').innerText     = c.nitrogen_dioxide ?? '--';
+            document.getElementById('aqiOzone').innerText   = c.ozone  ?? '--';
+            document.getElementById('aqiAdvice').innerText  = cl.advice;
+
+            const badge = document.getElementById('aqiBadge');
+            badge.innerText = cl.category;
+            badge.style.color  = cl.color;
+            badge.style.background = cl.color + '22';
+            badge.style.border = `1px solid ${cl.color}55`;
+
+            const bg = document.getElementById('aqiGaugeBg');
+            if (bg) bg.style.background = `radial-gradient(circle at 60% 40%, ${cl.color} 0%, transparent 70%)`;
+
+            // Render AQI trend chart
+            const ctx = document.getElementById('chartAQI');
+            if (ctx) {
+                if (window.chartAQIInst) window.chartAQIInst.destroy();
+                window.chartAQIInst = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: d.trend.hours,
+                        datasets: [
+                            {
+                                label: 'AQI (US)',
+                                data: d.trend.us_aqi,
+                                borderColor: '#22c55e',
+                                backgroundColor: 'rgba(34,197,94,0.10)',
+                                borderWidth: 2,
+                                pointRadius: 2,
+                                pointHoverRadius: 5,
+                                pointBackgroundColor: '#22c55e',
+                                fill: true,
+                                tension: 0.4,
+                                yAxisID: 'y'
+                            },
+                            {
+                                label: 'PM2.5',
+                                data: d.trend.pm2_5,
+                                borderColor: '#f97316',
+                                backgroundColor: 'transparent',
+                                borderWidth: 1.5,
+                                borderDash: [4, 3],
+                                pointRadius: 0,
+                                tension: 0.4,
+                                yAxisID: 'y'
+                            },
+                            {
+                                label: 'PM10',
+                                data: d.trend.pm10,
+                                borderColor: '#a855f7',
+                                backgroundColor: 'transparent',
+                                borderWidth: 1.5,
+                                borderDash: [4, 3],
+                                pointRadius: 0,
+                                tension: 0.4,
+                                yAxisID: 'y'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                labels: { color: 'rgba(200,200,220,0.7)', font: { size: 10, family: 'Inter, sans-serif' }, boxWidth: 12 }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(10,10,20,0.9)',
+                                titleColor: '#22c55e',
+                                bodyColor: '#e5e7eb',
+                                borderColor: 'rgba(34,197,94,0.3)',
+                                borderWidth: 1
+                            },
+                            zoom: { zoom: { wheel: { enabled: true }, mode: 'x' }, pan: { enabled: true, mode: 'x' } },
+                            annotation: {
+                                annotations: {
+                                    line100: { type: 'line', yMin: 100, yMax: 100, borderColor: 'rgba(234,179,8,0.4)', borderWidth: 1, borderDash: [4, 4], label: { content: 'Moderate', display: true, color: '#eab308', font: { size: 9 } } },
+                                    line150: { type: 'line', yMin: 150, yMax: 150, borderColor: 'rgba(249,115,22,0.4)', borderWidth: 1, borderDash: [4, 4] }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color: CHART_DEFAULTS.tick, font: CHART_DEFAULTS.font, maxTicksLimit: 8 }, grid: { color: CHART_DEFAULTS.grid } },
+                            y: { min: 0, ticks: { color: CHART_DEFAULTS.tick, font: CHART_DEFAULTS.font }, grid: { color: CHART_DEFAULTS.grid } }
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn('AQI fetch failed:', e);
+        }
     }
 
     async function fetchAndRenderHistory() {
@@ -1026,15 +1242,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Alert Notification logic ──────────────────────────────────────
-    function triggerAtmosphericAlert(data, prediction, weather) {
+    function triggerAtmosphericAlert(data, analysis, weather) {
         const severeRisks = ['moderate', 'high', 'extreme', 'moderate cold', 'high cold', 'extreme cold'];
-        if (severeRisks.includes(prediction.risk_level.toLowerCase())) {
+        if (severeRisks.includes(analysis.risk_level.toLowerCase())) {
             fetch('/api/send-alert', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    risk_level: prediction.risk_level,
-                    guidelines: prediction.safety_guidelines,
+                    risk_level: analysis.risk_level,
+                    guidelines: analysis.safety_guidelines,
                     temp: weather.temperature,
                     heat_index: weather.heat_index,
                     hospitals: data.hospitals,
