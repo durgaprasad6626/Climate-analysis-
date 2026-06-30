@@ -790,9 +790,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (chartTempInst)    { chartTempInst.destroy();    chartTempInst    = null; }
         if (chartHeatIdxInst) { chartHeatIdxInst.destroy(); chartHeatIdxInst = null; }
         if (chartHistoryInst) { chartHistoryInst.destroy(); chartHistoryInst = null; }
-        if (window.chartHumidityInst) { window.chartHumidityInst.destroy(); window.chartHumidityInst = null; }
         if (window.chartUVInst)       { window.chartUVInst.destroy();       window.chartUVInst       = null; }
-        if (window.chartAQIInst)      { window.chartAQIInst.destroy();      window.chartAQIInst      = null; }
 
         const localDate = new Date().toISOString().split('T')[0];
         // Fetch today's data and render default charts
@@ -815,18 +813,6 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(err => console.warn('Chart data fetch failed:', err));
 
-        // Also wire the lazy-load AQI tab
-        document.querySelectorAll('.viz-tab').forEach(tab => {
-            const orig = tab.onclick;
-            tab.addEventListener('click', () => {
-                if (tab.dataset.tab === 'aqitrend' && !window.chartAQIInst) {
-                    fetchAndRenderAQI();
-                }
-            });
-        });
-
-        // Fetch AQI card data in background
-        fetchAndRenderAQI();
     }
 
     function renderTempChart(d) {
@@ -951,120 +937,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
-    }
-
-    async function fetchAndRenderAQI() {
-        if (!window._lastLat || !window._lastLng) return;
-        try {
-            const res = await fetch('/api/aqi', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ lat: window._lastLat, lng: window._lastLng })
-            });
-            const d = await res.json();
-            if (d.status !== 'success') return;
-
-            const c  = d.current;
-            const cl = d.classification;
-
-            // Populate AQI section card
-            document.getElementById('aqiSection').classList.remove('hidden');
-            document.getElementById('aqiVal').innerText     = c.us_aqi ?? '--';
-            document.getElementById('aqiPm25').innerText    = c.pm2_5  ?? '--';
-            document.getElementById('aqiPm10').innerText    = c.pm10   ?? '--';
-            document.getElementById('aqiNo2').innerText     = c.nitrogen_dioxide ?? '--';
-            document.getElementById('aqiOzone').innerText   = c.ozone  ?? '--';
-            document.getElementById('aqiAdvice').innerText  = cl.advice;
-
-            const badge = document.getElementById('aqiBadge');
-            badge.innerText = cl.category;
-            badge.style.color  = cl.color;
-            badge.style.background = cl.color + '22';
-            badge.style.border = `1px solid ${cl.color}55`;
-
-            const bg = document.getElementById('aqiGaugeBg');
-            if (bg) bg.style.background = `radial-gradient(circle at 60% 40%, ${cl.color} 0%, transparent 70%)`;
-
-            // Render AQI trend chart
-            const ctx = document.getElementById('chartAQI');
-            if (ctx) {
-                if (window.chartAQIInst) window.chartAQIInst.destroy();
-                window.chartAQIInst = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: d.trend.hours,
-                        datasets: [
-                            {
-                                label: 'AQI (US)',
-                                data: d.trend.us_aqi,
-                                borderColor: '#22c55e',
-                                backgroundColor: 'rgba(34,197,94,0.10)',
-                                borderWidth: 2,
-                                pointRadius: 2,
-                                pointHoverRadius: 5,
-                                pointBackgroundColor: '#22c55e',
-                                fill: true,
-                                tension: 0.4,
-                                yAxisID: 'y'
-                            },
-                            {
-                                label: 'PM2.5',
-                                data: d.trend.pm2_5,
-                                borderColor: '#f97316',
-                                backgroundColor: 'transparent',
-                                borderWidth: 1.5,
-                                borderDash: [4, 3],
-                                pointRadius: 0,
-                                tension: 0.4,
-                                yAxisID: 'y'
-                            },
-                            {
-                                label: 'PM10',
-                                data: d.trend.pm10,
-                                borderColor: '#a855f7',
-                                backgroundColor: 'transparent',
-                                borderWidth: 1.5,
-                                borderDash: [4, 3],
-                                pointRadius: 0,
-                                tension: 0.4,
-                                yAxisID: 'y'
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: {
-                            legend: {
-                                display: true,
-                                labels: { color: 'rgba(200,200,220,0.7)', font: { size: 10, family: 'Inter, sans-serif' }, boxWidth: 12 }
-                            },
-                            tooltip: {
-                                backgroundColor: 'rgba(10,10,20,0.9)',
-                                titleColor: '#22c55e',
-                                bodyColor: '#e5e7eb',
-                                borderColor: 'rgba(34,197,94,0.3)',
-                                borderWidth: 1
-                            },
-                            zoom: { zoom: { wheel: { enabled: true }, mode: 'x' }, pan: { enabled: true, mode: 'x' } },
-                            annotation: {
-                                annotations: {
-                                    line100: { type: 'line', yMin: 100, yMax: 100, borderColor: 'rgba(234,179,8,0.4)', borderWidth: 1, borderDash: [4, 4], label: { content: 'Moderate', display: true, color: '#eab308', font: { size: 9 } } },
-                                    line150: { type: 'line', yMin: 150, yMax: 150, borderColor: 'rgba(249,115,22,0.4)', borderWidth: 1, borderDash: [4, 4] }
-                                }
-                            }
-                        },
-                        scales: {
-                            x: { ticks: { color: CHART_DEFAULTS.tick, font: CHART_DEFAULTS.font, maxTicksLimit: 8 }, grid: { color: CHART_DEFAULTS.grid } },
-                            y: { min: 0, ticks: { color: CHART_DEFAULTS.tick, font: CHART_DEFAULTS.font }, grid: { color: CHART_DEFAULTS.grid } }
-                        }
-                    }
-                });
-            }
-        } catch (e) {
-            console.warn('AQI fetch failed:', e);
-        }
     }
 
     async function fetchAndRenderHistory() {

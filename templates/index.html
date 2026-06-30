@@ -227,61 +227,6 @@
 
                 </div>
 
-                <!-- AQI Card -->
-                <div id="aqiSection" class="mb-14 hidden">
-                    <h3 class="flex items-center gap-3 font-serif text-xl tracking-wider mb-6 drop-shadow-[0_0_10px_rgba(34,197,94,0.3)]" style="color:#22c55e">
-                        <i class="fa-solid fa-wind"></i> Air Quality Index
-                        <span class="ml-auto text-xs font-sans tracking-widest text-gray-500 font-medium">LIVE AQI</span>
-                    </h3>
-                    <!-- AQI Hero Row -->
-                    <div class="flex flex-col md:flex-row gap-6 mb-6">
-                        <!-- AQI Gauge Card -->
-                        <div class="metric-card flex-1 relative overflow-hidden" id="aqiGaugeCard">
-                            <div class="absolute inset-0 opacity-10" id="aqiGaugeBg" style="background:radial-gradient(circle at 60% 40%, #22c55e 0%, transparent 70%)"></div>
-                            <h4 class="text-xs uppercase tracking-widest text-gray-400 font-semibold mb-3">US AQI</h4>
-                            <p class="text-6xl font-serif text-white leading-none mb-2"><span id="aqiVal">--</span></p>
-                            <div class="flex items-center gap-2 mt-2">
-                                <span id="aqiBadge" class="px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase" style="background:#22c55e22;color:#22c55e;border:1px solid #22c55e55">Good</span>
-                            </div>
-                            <p id="aqiAdvice" class="text-xs text-gray-500 mt-3 leading-relaxed">Fetching air quality data...</p>
-                        </div>
-                        <!-- Pollutant Details -->
-                        <div class="flex-1 grid grid-cols-2 gap-3">
-                            <div class="metric-card py-3 px-4">
-                                <h4 class="text-xs uppercase tracking-widest text-gray-500 mb-1">PM2.5</h4>
-                                <p class="text-2xl font-serif text-white"><span id="aqiPm25">--</span><span class="text-sm text-gray-500 ml-1">µg/m³</span></p>
-                            </div>
-                            <div class="metric-card py-3 px-4">
-                                <h4 class="text-xs uppercase tracking-widest text-gray-500 mb-1">PM10</h4>
-                                <p class="text-2xl font-serif text-white"><span id="aqiPm10">--</span><span class="text-sm text-gray-500 ml-1">µg/m³</span></p>
-                            </div>
-                            <div class="metric-card py-3 px-4">
-                                <h4 class="text-xs uppercase tracking-widest text-gray-500 mb-1">NO₂</h4>
-                                <p class="text-2xl font-serif text-white"><span id="aqiNo2">--</span><span class="text-sm text-gray-500 ml-1">µg/m³</span></p>
-                            </div>
-                            <div class="metric-card py-3 px-4">
-                                <h4 class="text-xs uppercase tracking-widest text-gray-500 mb-1">Ozone</h4>
-                                <p class="text-2xl font-serif text-white"><span id="aqiOzone">--</span><span class="text-sm text-gray-500 ml-1">µg/m³</span></p>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- AQI Scale Bar -->
-                    <div class="viz-card mb-0 py-4">
-                        <p class="text-xs uppercase tracking-widest text-gray-500 mb-3 font-semibold">AQI Scale Reference</p>
-                        <div class="flex rounded-full overflow-hidden h-3">
-                            <div class="flex-1" style="background:#22c55e" title="Good (0-50)"></div>
-                            <div class="flex-1" style="background:#eab308" title="Moderate (51-100)"></div>
-                            <div class="flex-1" style="background:#f97316" title="USG (101-150)"></div>
-                            <div class="flex-1" style="background:#ef4444" title="Unhealthy (151-200)"></div>
-                            <div class="flex-1" style="background:#a855f7" title="Very Unhealthy (201-300)"></div>
-                            <div class="flex-1" style="background:#7f1d1d" title="Hazardous (301+)"></div>
-                        </div>
-                        <div class="flex justify-between text-xs text-gray-600 mt-1">
-                            <span>0</span><span>50</span><span>100</span><span>150</span><span>200</span><span>300+</span>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Risk Level Legend -->
                 <div class="risk-legend mb-10">
                     <span class="legend-label">Risk Scale:</span>
@@ -509,9 +454,6 @@
                             <button class="viz-tab" data-tab="uv" id="tab-uv">
                                 <i class="fa-solid fa-sun mr-1.5"></i>UV Index
                             </button>
-                            <button class="viz-tab" data-tab="aqitrend" id="tab-aqitrend">
-                                <i class="fa-solid fa-wind mr-1.5"></i>AQI Trend
-                            </button>
                             <button class="viz-tab" data-tab="history" id="tab-history">
                                 <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>Historical
                             </button>
@@ -570,18 +512,6 @@
                                 <p class="text-xs text-gray-600 mb-2">Scroll to zoom · Click-drag to pan</p>
                                 <div class="relative" style="height: 280px;">
                                     <canvas id="chartUV"></canvas>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- AQI Trend Chart -->
-                        <div id="panel-aqitrend" class="viz-panel hidden">
-                            <div class="viz-card">
-                                <p class="text-xs uppercase tracking-widest text-gray-500 mb-4 font-semibold">
-                                    <i class="fa-solid fa-wind mr-2 opacity-50"></i>AQI Trend (US) — Today (24h)
-                                </p>
-                                <p class="text-xs text-gray-600 mb-2">Scroll to zoom · Click-drag to pan</p>
-                                <div class="relative" style="height: 280px;">
-                                    <canvas id="chartAQI"></canvas>
                                 </div>
                             </div>
                         </div>

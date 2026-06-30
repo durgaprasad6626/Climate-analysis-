@@ -120,6 +120,8 @@ Open your browser and navigate to **[http://127.0.0.1:5000](http://127.0.0.1:500
 |---|---|---|
 | `GET` | `/` | Main dashboard |
 | `POST` | `/api/analyze` | Get weather data & risk level for a location |
+| `POST` | `/api/chart-data` | Fetch 24h temperature, humidity, UV & historical chart data |
+| `POST` | `/api/personal-risk` | Calculate personalized risk score from profile |
 | `POST` | `/api/send-otp` | Send OTP to email (for auth flow) |
 | `POST` | `/api/verify-otp` | Verify OTP and log in / register |
 | `POST` | `/api/send-alert` | Trigger severe weather alert email |
