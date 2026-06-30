@@ -234,8 +234,9 @@ def fetch_met_no(lat, lng):
 
 def fetch_open_meteo(url):
     """Fetch from Open-Meteo with best_match localized models, with proxy fallback."""
+    # Use a 15s timeout to handle slow responses on cloud platforms like Render
     try:
-        res = requests.get(url, timeout=10, headers=COMMON_HEADERS)
+        res = requests.get(url, timeout=15, headers=COMMON_HEADERS)
         if res.status_code == 200:
             data = res.json()
             data["source"] = "Open-Meteo (" + str(data.get('generationtime_ms', 0)) + "ms)"
@@ -247,7 +248,7 @@ def fetch_open_meteo(url):
     import urllib.parse
     try:
         proxy_url = f"https://corsproxy.io/?{urllib.parse.quote(url)}"
-        res = requests.get(proxy_url, timeout=12, headers=COMMON_HEADERS)
+        res = requests.get(proxy_url, timeout=20, headers=COMMON_HEADERS)
         if res.status_code == 200:
             data = res.json()
             data["source"] = "Open-Meteo Proxy (" + str(data.get('generationtime_ms', 0)) + "ms)"
@@ -277,21 +278,29 @@ def fetch_weather_unified(lat, lng):
             raise Exception("All weather data sources are currently unreachable. Please try again in a moment.")
 
     # 3. High-Priority observation fetch: FCC OpenWeatherMap proxy for station-level precision
+    # NOTE: This proxy returns temperature in KELVIN, so we must convert to Celsius.
     try:
         fcc_url = f"https://weather-proxy.freecodecamp.rocks/api/current?lat={lat}&lon={lng}"
         fcc_res = requests.get(fcc_url, timeout=5, headers=COMMON_HEADERS)
         if fcc_res.status_code == 200:
             fcc_data = fcc_res.json()
             if 'main' in fcc_data:
-                # Override current temp/humidity with station-level observation if available
-                station_temp = float(fcc_data['main'].get('temp'))
-                station_hum  = float(fcc_data['main'].get('humidity'))
-                
-                # Check if current is in unified_data
-                if 'current' in unified_data:
-                    unified_data['current']['temperature_2m'] = station_temp
-                    unified_data['current']['relative_humidity_2m'] = station_hum
-                    unified_data['obs_source'] = "OpenWeatherMap Station"
+                raw_temp = float(fcc_data['main'].get('temp', 0))
+                # Convert Kelvin → Celsius if value looks like Kelvin (> 150)
+                if raw_temp > 150:
+                    station_temp = round(raw_temp - 273.15, 1)
+                else:
+                    station_temp = round(raw_temp, 1)
+                station_hum  = float(fcc_data['main'].get('humidity', 0))
+                # Only override if values are in a physically plausible range
+                if -60 < station_temp < 70 and 0 <= station_hum <= 100:
+                    if 'current' in unified_data:
+                        unified_data['current']['temperature_2m'] = station_temp
+                        unified_data['current']['relative_humidity_2m'] = station_hum
+                        unified_data['obs_source'] = "OpenWeatherMap Station"
+                        print(f"[Station Override] temp={station_temp}°C hum={station_hum}%")
+                else:
+                    print(f"[Station Observation] Skipped: implausible values temp={station_temp} hum={station_hum}")
     except Exception as e:
         print(f"[Station Observation Error] {e}")
 
@@ -306,31 +315,37 @@ def fetch_weather_unified(lat, lng):
     else:
         # om_data failed (common on Render due to timeout) — fire a lightweight UV-only request
         print("[UV Fallback] om_data missing, attempting dedicated UV fetch...")
-        try:
-            uv_only_url = (
-                f"https://api.open-meteo.com/v1/forecast"
-                f"?latitude={lat}&longitude={lng}"
-                f"&hourly=uv_index&forecast_days=1&timezone=auto"
-            )
-            uv_res = requests.get(uv_only_url, timeout=10, headers=COMMON_HEADERS)
-            
-            # If direct fetch fails or is rate limited, try proxy
-            if uv_res.status_code != 200:
-                print("[UV Fallback] Direct fetch failed, trying proxy...")
-                import urllib.parse
-                proxy_url = f"https://corsproxy.io/?{urllib.parse.quote(uv_only_url)}"
-                uv_res = requests.get(proxy_url, timeout=12, headers=COMMON_HEADERS)
-
-            if uv_res.status_code == 200:
-                uv_hourly = uv_res.json().get('hourly', {})
-                uv_list = uv_hourly.get('uv_index', [])
-                if uv_list:
-                    if 'hourly' not in unified_data:
-                        unified_data['hourly'] = {}
-                    unified_data['hourly']['uv_index'] = uv_list
-                    print(f"[UV Fallback] Got UV data: max={max(uv_list):.1f}")
-        except Exception as uv_err:
-            print(f"[UV Fallback Error] {uv_err}")
+        import urllib.parse
+        uv_fetched = False
+        # Try direct Open-Meteo with longer timeout first
+        uv_only_url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lng}"
+            f"&hourly=uv_index&forecast_days=1&timezone=auto"
+        )
+        for attempt_url in [
+            uv_only_url,
+            f"https://corsproxy.io/?{urllib.parse.quote(uv_only_url)}",
+            f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&hourly=uv_index&forecast_days=1&timezone=UTC"
+        ]:
+            if uv_fetched:
+                break
+            try:
+                uv_res = requests.get(attempt_url, timeout=15, headers=COMMON_HEADERS)
+                if uv_res.status_code == 200:
+                    uv_hourly = uv_res.json().get('hourly', {})
+                    uv_list = uv_hourly.get('uv_index', [])
+                    valid_uvs = [v for v in uv_list if v is not None]
+                    if valid_uvs:
+                        if 'hourly' not in unified_data:
+                            unified_data['hourly'] = {}
+                        unified_data['hourly']['uv_index'] = uv_list
+                        print(f"[UV Fallback] Got UV data from {attempt_url[:60]}: max={max(valid_uvs):.1f}")
+                        uv_fetched = True
+            except Exception as uv_err:
+                print(f"[UV Fallback Error] attempt={attempt_url[:60]} err={uv_err}")
+        if not uv_fetched:
+            print("[UV Fallback] All UV fetch attempts failed, UV index will be 0.")
 
     return unified_data
 
