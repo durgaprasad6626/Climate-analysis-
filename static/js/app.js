@@ -80,11 +80,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Helper: call /api/analyze with lat/lng ────────────────────────
     async function analyzeCoords(lat, lng, label) {
         showLoader();
+        let clientWeather = null;
+        try {
+            const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m&hourly=uv_index,temperature_2m,relative_humidity_2m,apparent_temperature&forecast_days=3&timezone=auto`;
+            const omRes = await fetch(omUrl);
+            if (omRes.ok) {
+                clientWeather = await omRes.json();
+            }
+        } catch (err) {
+            console.warn('Client Open-Meteo fetch failed, falling back to server fetch:', err);
+        }
+
         try {
             const res = await fetch('/api/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ lat, lng })
+                body: JSON.stringify({ lat, lng, client_weather: clientWeather })
             });
             const data = await res.json();
             if (data.status === 'success') {
@@ -761,6 +772,61 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    async function fetchChartData(lat, lng, localDate) {
+        let clientToday = null;
+        let clientYesterday = null;
+        let clientLastweek = null;
+
+        const todayDate = localDate || new Date().toISOString().split('T')[0];
+        const todayObj = new Date(todayDate);
+        
+        const yestObj = new Date(todayObj);
+        yestObj.setDate(todayObj.getDate() - 1);
+        const yesterdayDate = yestObj.toISOString().split('T')[0];
+        
+        const lastweekObj = new Date(todayObj);
+        lastweekObj.setDate(todayObj.getDate() - 7);
+        const lastweekDate = lastweekObj.toISOString().split('T')[0];
+
+        try {
+            const todayUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m&hourly=uv_index,temperature_2m,relative_humidity_2m&timezone=auto`;
+            const todayRes = await fetch(todayUrl);
+            if (todayRes.ok) clientToday = await todayRes.json();
+        } catch (e) {
+            console.warn('Failed to fetch client chart-data for today:', e);
+        }
+
+        try {
+            const yestUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${yesterdayDate}&end_date=${yesterdayDate}&hourly=temperature_2m,relative_humidity_2m&timezone=auto`;
+            const yestRes = await fetch(yestUrl);
+            if (yestRes.ok) clientYesterday = await yestRes.json();
+        } catch (e) {
+            console.warn('Failed to fetch client chart-data for yesterday:', e);
+        }
+
+        try {
+            const lastweekUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${lastweekDate}&end_date=${lastweekDate}&hourly=temperature_2m,relative_humidity_2m&timezone=auto`;
+            const lastweekRes = await fetch(lastweekUrl);
+            if (lastweekRes.ok) clientLastweek = await lastweekRes.json();
+        } catch (e) {
+            console.warn('Failed to fetch client chart-data for lastweek:', e);
+        }
+
+        const response = await fetch('/api/chart-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                lat,
+                lng,
+                local_date: todayDate,
+                client_today: clientToday,
+                client_yesterday: clientYesterday,
+                client_lastweek: clientLastweek
+            })
+        });
+        return await response.json();
+    }
+
     function initVizDashboard() {
         const section = document.getElementById('vizDashboard');
         if (section) section.classList.remove('hidden');
@@ -794,15 +860,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const localDate = new Date().toISOString().split('T')[0];
         // Fetch today's data and render default charts
-        fetch('/api/chart-data', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                lat: window._lastLat,
-                lng: window._lastLng,
-                local_date: localDate
-            })
-        })
-            .then(r => r.json())
+        fetchChartData(window._lastLat, window._lastLng, localDate)
             .then(d => {
                 if (d.status !== 'success') return;
                 window._chartData = d;
@@ -946,11 +1004,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let d = window._chartData;
         if (!d) {
             try {
-                const r = await fetch('/api/chart-data', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ lat: window._lastLat, lng: window._lastLng })
-                });
-                d = await r.json();
+                const localDate = new Date().toISOString().split('T')[0];
+                d = await fetchChartData(window._lastLat, window._lastLng, localDate);
                 window._chartData = d;
             } catch (e) {
                 if (loading) loading.classList.add('hidden');

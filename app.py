@@ -244,18 +244,26 @@ def fetch_open_meteo(url):
     except Exception as e:
         print(f"[Open-Meteo Error] {e}")
         
-    print("[Open-Meteo Fallback] Direct fetch failed, trying proxy...")
+    print("[Open-Meteo Fallback] Direct fetch failed, trying proxies...")
     import urllib.parse
-    try:
-        proxy_url = f"https://corsproxy.io/?{urllib.parse.quote(url)}"
-        res = requests.get(proxy_url, timeout=20, headers=COMMON_HEADERS)
-        if res.status_code == 200:
-            data = res.json()
-            data["source"] = "Open-Meteo Proxy (" + str(data.get('generationtime_ms', 0)) + "ms)"
-            return data
-    except Exception as e:
-        print(f"[Open-Meteo Proxy Error] {e}")
-        
+    quoted_url = urllib.parse.quote(url)
+    proxies = [
+        ("AllOrigins", f"https://api.allorigins.win/raw?url={quoted_url}"),
+        ("CodeTabs", f"https://api.codetabs.com/v1/proxy?quest={quoted_url}"),
+        ("CorsProxy", f"https://corsproxy.io/?{quoted_url}")
+    ]
+    
+    for name, proxy_url in proxies:
+        try:
+            print(f"[Open-Meteo Fallback] Trying {name} proxy...")
+            res = requests.get(proxy_url, timeout=20, headers=COMMON_HEADERS)
+            if res.status_code == 200:
+                data = res.json()
+                data["source"] = f"Open-Meteo via {name}"
+                return data
+        except Exception as e:
+            print(f"[Open-Meteo Fallback Error] {name} failed: {e}")
+            
     return None
 
 def fetch_weather_unified(lat, lng):
@@ -477,18 +485,11 @@ RISK_ORDER = ["Low", "Moderate", "High", "Extreme"]
 def _clamp_risk(index):
     return RISK_ORDER[max(0, min(index, len(RISK_ORDER) - 1))]
 
-def build_forecast_trend(lat, lng):
-    """Fetch 72-hour hourly forecast and bucket into 3 x 24-hour windows."""
+def build_forecast_trend_from_data(data):
+    """Build 72-hour hourly forecast trend from the given weather data dictionary."""
+    if not data:
+        return []
     try:
-        url = (
-            f"https://api.open-meteo.com/v1/forecast"
-            f"?latitude={lat}&longitude={lng}"
-            f"&hourly=temperature_2m,relative_humidity_2m,uv_index,apparent_temperature"
-            f"&forecast_days=3&timezone=auto"
-        )
-        data = fetch_open_meteo(url)
-        if not data:
-            return []
         hourly = data.get('hourly', {})
         temps   = hourly.get('temperature_2m', [])
         humids  = hourly.get('relative_humidity_2m', [])
@@ -519,8 +520,19 @@ def build_forecast_trend(lat, lng):
             })
         return windows
     except Exception as e:
-        print(f"[forecast_trend error] {e}")
+        print(f"[forecast_trend_from_data error] {e}")
         return []
+
+def build_forecast_trend(lat, lng):
+    """Fetch 72-hour hourly forecast and bucket into 3 x 24-hour windows."""
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat}&longitude={lng}"
+        f"&hourly=temperature_2m,relative_humidity_2m,uv_index,apparent_temperature"
+        f"&forecast_days=3&timezone=auto"
+    )
+    data = fetch_open_meteo(url)
+    return build_forecast_trend_from_data(data)
 
 
 def generate_xai_explanation(temp, humidity, uv_index, heat_index, risk_level):
@@ -771,21 +783,54 @@ def analyze_heatwave():
         lat = float(lat)
         lng = float(lng)
 
+        client_weather = data.get('client_weather')
+
         import concurrent.futures
 
         # Run external API calls concurrently to reduce response time
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_weather = executor.submit(fetch_weather_unified, lat, lng)
+            if client_weather:
+                future_weather = None
+                future_forecast = None
+            else:
+                future_weather = executor.submit(fetch_weather_unified, lat, lng)
+                future_forecast = executor.submit(build_forecast_trend, lat, lng)
+
             future_hospitals = executor.submit(get_nearby_hospitals, lat, lng)
             future_transit = executor.submit(get_nearby_transit, lat, lng)
             future_location = executor.submit(get_reverse_geocode, lat, lng) if not query else None
-            future_forecast = executor.submit(build_forecast_trend, lat, lng)
 
-            weather_data = future_weather.result()
+            if client_weather:
+                weather_data = client_weather
+                # Apply station override on top of client weather
+                try:
+                    fcc_url = f"https://weather-proxy.freecodecamp.rocks/api/current?lat={lat}&lon={lng}"
+                    fcc_res = requests.get(fcc_url, timeout=5, headers=COMMON_HEADERS)
+                    if fcc_res.status_code == 200:
+                        fcc_data = fcc_res.json()
+                        if 'main' in fcc_data:
+                            raw_temp = float(fcc_data['main'].get('temp', 0))
+                            if raw_temp > 150:
+                                station_temp = round(raw_temp - 273.15, 1)
+                            else:
+                                station_temp = round(raw_temp, 1)
+                            station_hum  = float(fcc_data['main'].get('humidity', 0))
+                            if -60 < station_temp < 70 and 0 <= station_hum <= 100:
+                                weather_data['current']['temperature_2m'] = station_temp
+                                weather_data['current']['relative_humidity_2m'] = station_hum
+                                weather_data['obs_source'] = "OpenWeatherMap Station"
+                                print(f"[Station Override on Client Weather] temp={station_temp}°C hum={station_hum}%")
+                except Exception as e:
+                    print(f"[Station Observation Error on Client Weather] {e}")
+
+                forecast_trend = build_forecast_trend_from_data(weather_data)
+            else:
+                weather_data = future_weather.result()
+                forecast_trend = future_forecast.result()
+
             hospitals = future_hospitals.result()
             transit = future_transit.result()
             location_name = future_location.result() if future_location else query
-            forecast_trend = future_forecast.result()
 
         current_weather = weather_data.get('current', {})
         
@@ -880,11 +925,21 @@ def chart_data():
                 print(f"[fetch_day Error] {e}")
             return [], []
 
-        # Use unified fetcher for today's data to ensure consistency with the hero metrics
-        unified_today = fetch_weather_unified(lat, lng)
-        today_temps  = unified_today.get('hourly', {}).get('temperature_2m', [])[:24]
-        today_humids = unified_today.get('hourly', {}).get('relative_humidity_2m', [])[:24]
-        today_uvs    = unified_today.get('hourly', {}).get('uv_index', [])[:24]
+        client_today = data.get('client_today')
+        client_yesterday = data.get('client_yesterday')
+        client_lastweek = data.get('client_lastweek')
+
+        # Use client today or fetch it
+        if client_today:
+            unified_today = client_today
+            today_temps  = unified_today.get('hourly', {}).get('temperature_2m', [])[:24]
+            today_humids = unified_today.get('hourly', {}).get('relative_humidity_2m', [])[:24]
+            today_uvs    = unified_today.get('hourly', {}).get('uv_index', [])[:24]
+        else:
+            unified_today = fetch_weather_unified(lat, lng)
+            today_temps  = unified_today.get('hourly', {}).get('temperature_2m', [])[:24]
+            today_humids = unified_today.get('hourly', {}).get('relative_humidity_2m', [])[:24]
+            today_uvs    = unified_today.get('hourly', {}).get('uv_index', [])[:24]
 
         # Determine current hour in HIS (Location local time)
         # If the weather API returned a current time, use its hour.
@@ -907,8 +962,19 @@ def chart_data():
 
         today_hi = [round(calculate_heat_index(t, rh), 1) for t, rh in zip(today_temps, today_humids)]
 
-        yest_temps,  yest_humids  = fetch_day(str(yesterday))
-        week_temps,  week_humids  = fetch_day(str(lastweek))
+        # Use client yesterday or fetch it
+        if client_yesterday:
+            yest_temps = client_yesterday.get('hourly', {}).get('temperature_2m', [])
+            yest_humids = client_yesterday.get('hourly', {}).get('relative_humidity_2m', [])
+        else:
+            yest_temps,  yest_humids  = fetch_day(str(yesterday))
+
+        # Use client last week or fetch it
+        if client_lastweek:
+            week_temps = client_lastweek.get('hourly', {}).get('temperature_2m', [])
+            week_humids = client_lastweek.get('hourly', {}).get('relative_humidity_2m', [])
+        else:
+            week_temps,  week_humids  = fetch_day(str(lastweek))
 
         # Daily averages for bar comparison (avg of each day's 24h)
         def day_avg(temps):
